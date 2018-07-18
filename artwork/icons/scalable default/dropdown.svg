@@ -5,11 +5,11 @@
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
-   id="svg8"
-   version="1.1"
-   viewBox="0 0 127 127"
+   width="480"
    height="480"
-   width="480">
+   viewBox="0 0 127 127"
+   version="1.1"
+   id="svg8">
   <defs
      id="defs2" />
   <metadata
@@ -24,16 +24,12 @@
       </cc:Work>
     </rdf:RDF>
   </metadata>
-  <g
-     transform="translate(-45.546383,32.122578)"
-     id="layer1">
-    <path
-       id="rect4510-2"
-       d="M 167.90987,14.65039 117.51305,65.037783 67.116224,14.65039 c 100.793646,0 0,0 100.793646,0 z"
-       style="opacity:1;fill:#e6e6e6;fill-opacity:1;stroke-width:0.85513884" />
-    <path
-       id="rect4510"
-       d="M 159.44321,6.1837247 109.04638,56.571119 58.649558,6.1837247 c 100.793652,0 0,0 100.793652,0 z"
-       style="opacity:1;fill:#4d4d4d;fill-opacity:1;stroke-width:0.85513884" />
-  </g>
+  <path
+     id="rect4510-2"
+     d="M 122.09896,46.508315 71.702134,96.895708 21.305308,46.508315 c 100.793652,0 0,0 100.793652,0 z"
+     style="opacity:0.1;fill-opacity:1;stroke-width:0.85513884" />
+  <path
+     id="rect4510"
+     d="M 113.89683,38.306303 63.499997,88.693697 13.103175,38.306303 c 100.793655,0 0,0 100.793655,0 z"
+     style="opacity:1;fill:#4d4d4d;fill-opacity:1;stroke-width:0.85513884" />
 </svg>

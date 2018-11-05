@@ -10,6 +10,8 @@ clean()
   unset PREFIXES
   unset LD_LIBRARY_PATH
   unset CPPFLAGS
+  unset CFLAGS
+  unset CXXFLAGS
   unset LDFLAGS
   export PATH="$OLDPATH"
   unset PKG_CONFIG_PATH

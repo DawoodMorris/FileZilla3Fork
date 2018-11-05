@@ -1,0 +1,41 @@
+What is a prefix?
+=================
+
+Long story short: The directory you pass to the --prefix parameter of configure
+
+
+Switching prefixes
+=================
+
+. prefix.sh ~/prefix
+
+Sourcing prefix.sh changes the prefix to the passed directory.
+
+If passing multiple directories, prefixes are chained together, with earlier one taking precedence.
+
+Passing no arguments resets the prefix.
+
+
+The profile script
+==================
+
+prefix.sh sources a file named profile from the prefix directory, where you can set any number
+of additional environment variables.
+The most commonly set variable this way is the CONFIGURE_ARGS variable, see below.
+
+
+Running configure
+=================
+
+configure.sh calls configure, with the contents of CONFIGURE_ARGS environment variable expanded as additional arguments to configure
+
+Note that configure.sh does not pass --prefix to configure
+
+
+Useful aliases
+==============
+
+Assuming prefix scripts are located in ~/prefix_scripts, add the following two lines to ~/.bashrc
+
+alias prefix=". ~/prefix_scripts/prefix.sh"
+alias conf="~/prefix_scripts/configure.sh"

@@ -1,0 +1,79 @@
+lib_LTLIBRARIES = libfilezilla.la
+
+libfilezilla_la_SOURCES = \
+	buffer.cpp \
+	encode.cpp \
+	encryption.cpp \
+	event.cpp \
+	event_handler.cpp \
+	event_loop.cpp \
+	file.cpp \
+	hash.cpp \
+	iputils.cpp \
+	local_filesys.cpp \
+	mutex.cpp \
+	process.cpp \
+	recursive_remove.cpp \
+	signature.cpp \
+	string.cpp \
+	thread.cpp \
+	thread_pool.cpp \
+	time.cpp \
+	uri.cpp \
+	util.cpp \
+	version.cpp
+
+nobase_include_HEADERS = \
+	libfilezilla/apply.hpp \
+	libfilezilla/buffer.hpp \
+	libfilezilla/encode.hpp \
+	libfilezilla/encryption.hpp \
+	libfilezilla/event.hpp \
+	libfilezilla/event_handler.hpp \
+	libfilezilla/event_loop.hpp \
+	libfilezilla/file.hpp \
+	libfilezilla/format.hpp \
+	libfilezilla/hash.hpp \
+	libfilezilla/iputils.hpp \
+	libfilezilla/libfilezilla.hpp \
+	libfilezilla/local_filesys.hpp \
+	libfilezilla/mutex.hpp \
+	libfilezilla/optional.hpp \
+	libfilezilla/process.hpp \
+	libfilezilla/recursive_remove.hpp \
+	libfilezilla/shared.hpp \
+	libfilezilla/signature.hpp \
+	libfilezilla/string.hpp \
+	libfilezilla/thread.hpp \
+	libfilezilla/thread_pool.hpp \
+	libfilezilla/time.hpp \
+	libfilezilla/uri.hpp \
+	libfilezilla/util.hpp \
+	libfilezilla/version.hpp \
+	libfilezilla/private/defs.hpp \
+	libfilezilla/private/visibility.hpp \
+	libfilezilla/private/windows.hpp \
+	libfilezilla/glue/wx.hpp
+
+libfilezilla_la_CPPFLAGS = $(AM_CPPFLAGS)
+libfilezilla_la_CPPFLAGS += -DBUILDING_LIBFILEZILLA
+libfilezilla_la_CPPFLAGS += $(NETTLE_CFLAGS)
+
+# Needed for version.hpp in out-of-tree builds
+libfilezilla_la_CPPFLAGS += -I$(srcdir)/libfilezilla
+
+libfilezilla_la_CXXFLAGS = $(AM_CXXFLAGS)
+libfilezilla_la_CXXFLAGS += -fvisibility=hidden
+
+libfilezilla_la_LDFLAGS = $(AM_LDFLAGS)
+libfilezilla_la_LDFLAGS += -no-undefined
+libfilezilla_la_LIBADD = $(libdeps)
+
+libfilezilla_la_LIBADD += $(NETTLE_LIBS) $(HOGWEED_LIBS)
+
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = libfilezilla.pc
+
+DISTCLEANFILES = libfilezilla.pc
+
+dist_noinst_DATA = libfilezilla.vcxproj

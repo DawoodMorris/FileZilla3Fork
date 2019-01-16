@@ -42,11 +42,11 @@ getHost()
     if [ -z "$REPLY" ]; then
       if ! [ -z "$TARGETS" ]; then
         printhost
-	return 0
+        return 0
       fi
       continue;
     fi
-    
+
     if [ -z "$HOST" ]; then
       export HOST="$REPLY"
     elif [ -z "$HOSTPREFIX" ]; then
@@ -61,8 +61,14 @@ getHost()
     fi
   done
 
-  if [ -z $TARGETS] && ! [ -z $HOST ]; then
+  if [ -z $TARGETS ] && ! [ -z $HOST ]; then
     echo "Premature end of hosts file"
+    return 1
+  fi
+
+  if ! [ -z "$TARGETS" ]; then
+    printhost
+    return 0
   fi
 
   return 1

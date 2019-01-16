@@ -2,7 +2,7 @@
 
 cpu_count()
 {
-  NPROC=`which nproc 2>/dev/null` 
+  NPROC=`which nproc 2>/dev/null`
   if [ ! -z "$NPROC" ] && [ -x "$NPROC" ]; then
     echo `$NPROC`
     return

@@ -7,6 +7,12 @@ PACKAGE=$2
 
 mkdir -p "$OUTPUTDIR/$TARGET"
 
+if [ -x "`which sha512sum`" ]; then
+  SHASUM="sha512sum --binary"
+else
+  SHASUM="shasum -a 512 -b"
+fi
+
 if [ "$STRIP" = "false" ]; then
   echo "Binaries will not be stripped"
 elif [ "$STRIP" = "" ]; then
@@ -28,8 +34,10 @@ fi
 do_strip()
 {
   if echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
-    echo "Creating debug symbols for \"$1/$2\""
-    dsymutil "$1/$2"
+    if ! echo "$1/$2" | grep "\\.dylib" 2>&1 > /dev/null; then
+      echo "Creating debug symbols for \"$1/$2\""
+      dsymutil "$1/$2"
+    fi
   fi
 
   if [ -d "$3" ]; then
@@ -80,6 +88,25 @@ do_sign()
   fi
 }
 
+copy_so()
+{
+  name=${1##*/}
+  if [ ! -f "$PACKAGE/lib/$name" ]; then
+    echo "Copying dependency $name"
+    cp "$1" "$PACKAGE/lib/$name"
+
+    do_strip "$PACKAGE/lib/" "$name" "$WORKDIR/debug"
+  fi
+}
+
+copy_sos()
+{
+ while [ ! -z "$1" ]; do
+    copy_so "$1"
+    shift
+  done
+}
+
 rm -rf "$WORKDIR/debug"
 mkdir "$WORKDIR/debug"
 
@@ -101,6 +128,12 @@ if echo "$TARGET" | grep "mingw"; then
   do_sign "$WORKDIR/$PACKAGE/src/fzshellext/32" "libfzshellext-0.dll"
   do_sign "$WORKDIR/$PACKAGE/src/fzshellext/64" "libfzshellext-0.dll"
 
+  cd "$WORKDIR/$PACKAGE/data/dlls"
+  for i in *.dll; do
+    do_strip "$WORKDIR/$PACKAGE/data/dlls" "$i" "$WORKDIR/debug"
+    do_sign "$WORKDIR/$PACKAGE/data/dlls" "$i"
+  done
+
   echo "Making installer"
   cd "$WORKDIR/$PACKAGE/data"
 
@@ -113,8 +146,8 @@ if echo "$TARGET" | grep "mingw"; then
   mv FileZilla.zip "$OUTPUTDIR/$TARGET/FileZilla.zip"
 
   cd "$OUTPUTDIR/$TARGET" || exit 1
-  sha512sum --binary "FileZilla_3_setup.exe" > "FileZilla_3_setup.exe.sha512" || exit 1
-  sha512sum --binary "FileZilla.zip" > "FileZilla.zip.sha512" || exit 1
+  $SHASUM "FileZilla_3_setup.exe" > "FileZilla_3_setup.exe.sha512" || exit 1
+  $SHASUM "FileZilla.zip" > "FileZilla.zip.sha512" || exit 1
 
 elif echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
 
@@ -124,6 +157,12 @@ elif echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
   do_strip "FileZilla.app/Contents/MacOS" fzsftp "$WORKDIR/debug"
   do_strip "FileZilla.app/Contents/MacOS" fzstorj "$WORKDIR/debug"
 
+  cd "$WORKDIR/$PACKAGE/FileZilla.app/Contents/Frameworks"
+  for i in *.dylib; do
+    do_strip "FileZilla.app/Contents/Frameworks" "$i" "$WORKDIR/debug"
+  done
+
+  cd "$WORKDIR/$PACKAGE"
   if [ -x "$HOME/prefix-$TARGET/sign.sh" ]; then
     echo "Signing bundle"
     "$HOME/prefix-$TARGET/sign.sh" || exit 1
@@ -133,18 +172,24 @@ elif echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
   tar -cjf "$OUTPUTDIR/$TARGET/$PACKAGE.app.tar.bz2" FileZilla.app
 
   cd "$OUTPUTDIR/$TARGET" || exit 1
-  sha512sum --binary "$PACKAGE.app.tar.bz2" > "$PACKAGE.app.tar.bz2.sha512" || exit 1
+  $SHASUM --binary "$PACKAGE.app.tar.bz2" > "$PACKAGE.app.tar.bz2.sha512" || exit 1
 
 else
 
   cd "$WORKDIR/prefix"
+
+  mkdir -p "$PACKAGE/lib"
+  for i in "$PACKAGE"/bin/*; do
+    copy_sos `ldd "$i" | grep '=> /home' | sed 's/.*=> //' | sed 's/ .*//'`
+    chrpath -r '$ORIGIN/../lib' $i || true
+  done
   do_strip "$PACKAGE/bin" filezilla "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzputtygen "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzsftp "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzstorj "$WORKDIR/debug"
   tar -cjf "$OUTPUTDIR/$TARGET/$PACKAGE.tar.bz2" $PACKAGE || exit 1
   cd "$OUTPUTDIR/$TARGET" || exit 1
-  sha512sum --binary "$PACKAGE.tar.bz2" > "$PACKAGE.tar.bz2.sha512" || exit 1
+  $SHASUM --binary "$PACKAGE.tar.bz2" > "$PACKAGE.tar.bz2.sha512" || exit 1
 
 fi
 

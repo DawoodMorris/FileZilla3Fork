@@ -1,6 +1,6 @@
 #! /bin/sh
 
-export SSH="ssh -o PreferredAuthentications=publickey -o StrictHostKeyChecking=yes -o BatchMode=yes -q"
+export SSH="ssh -oPreferredAuthentications=publickey -oStrictHostKeyChecking=yes -oBatchMode=yes -q"
 export SCP="scp -o PreferredAuthentications=publickey -o StrictHostKeyChecking=yes -o BatchMode=yes -q -B -C"
 
 failure()
@@ -71,7 +71,10 @@ buildspawn()
   fi
 
   logprint "$TARGETS: Uploading packages"
-  filter $SSH -i "$KEYFILE" -p $PORT "$HOST" ". /etc/profile; mkdir -p "$HOSTPREFIX/packages"; cd $HOSTPREFIX/packages && rsync -a --delete \"$UPDATESERVER\" ." 2>&1 || all_failure || return 1
+
+  filter $SSH -i "$KEYFILE" -p $PORT "$HOST" ". /etc/profile; mkdir -p '$HOSTPREFIX/packages'" 2>&1 || all_failure || return 1
+
+  filter rsync -e "$SSH -p$PORT" -a --delete $WORKDIR/source/ $HOST:$HOSTPREFIX/packages 2>&1 || all_failure || return 1
 
   logprint "$TARGETS: Uploading clientscripts"
   filter $SCP -i "$KEYFILE" -P $PORT "$WORKDIR/clientscripts.tar.bz2" "$HOST:$HOSTPREFIX" || all_failure || return 1

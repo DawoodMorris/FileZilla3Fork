@@ -21,7 +21,7 @@ makepackage()
   mkdir -p "$WORKDIR/$PACKAGE"
   cd "$WORKDIR/$PACKAGE"
 
-  HOSTARG=`"$SCRIPTS/configure_target.sh" "$TARGET" "$HOST"`
+  HOSTARG=`"$SCRIPTS/configure_target.sh" "$TARGET"`
 
   top_srcdir=$(relpath "$(pwd)" "$PREFIX/packages/$PACKAGE/")
 

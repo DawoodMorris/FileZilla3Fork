@@ -54,13 +54,13 @@ makerelease()
       local suffix=
       local hash=1
       case "$TARGET" in
-        x86_64*mingw*)
+        x86_64*mingw*|win64)
           platform=win64
 	  if [ "$lext" = "exe" ]; then
 	    platform="${platform}-setup"
 	  fi
           ;;
-        i?86*mingw*)
+        i?86*mingw*|win32)
           platform=win32
 	  if [ "$lext" = "exe" ]; then
 	    platform="${platform}-setup"

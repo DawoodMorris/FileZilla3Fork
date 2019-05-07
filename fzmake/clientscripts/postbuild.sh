@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 set -e
 
@@ -110,9 +110,9 @@ copy_sos()
 rm -rf "$WORKDIR/debug"
 mkdir "$WORKDIR/debug"
 
-if echo "$TARGET" | grep "mingw"; then
+if echo "$TARGET" | grep 'mingw\|^win..$'; then
 
-  MAKENSIS="wine /home/nightlybuild/nsis-3.01/makensis.exe"
+  MAKENSIS=(wine c:\\Program\ Files\\NSIS\\makensis.exe)
 
   do_strip "$WORKDIR/$PACKAGE/src/interface" "filezilla.exe" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/putty" "fzputtygen.exe" "$WORKDIR/debug"
@@ -137,7 +137,7 @@ if echo "$TARGET" | grep "mingw"; then
   echo "Making installer"
   cd "$WORKDIR/$PACKAGE/data"
 
-  $MAKENSIS install.nsi
+  "${MAKENSIS[@]}" install.nsi
   do_sign "$WORKDIR/$PACKAGE/data" "FileZilla_3_setup.exe"
   chmod 775 FileZilla_3_setup.exe
   mv FileZilla_3_setup.exe "$OUTPUTDIR/$TARGET"

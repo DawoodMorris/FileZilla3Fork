@@ -1,0 +1,439 @@
+#ifndef LIBFILEZILLA_STRING_HEADER
+#define LIBFILEZILLA_STRING_HEADER
+
+#include "libfilezilla.hpp"
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
+/** \file
+ * \brief String types and assorted functions.
+ *
+ * Defines the \ref fz::native_string type and offers various functions to convert between
+ * different string types.
+ */
+
+namespace fz {
+
+/** \typedef native_string
+ *
+ * \brief A string in the system's native character type and encoding.\n Note: This typedef changes depending on platform!
+ *
+ * On Windows, the system's native encoding is UTF-16, so native_string is typedef'ed to std::wstring.
+ *
+ * On all other platform, native_string is a typedef for std::string.
+ *
+ * Always using native_string has the benefit that no conversion needs to be performed which is especially useful
+ * if dealing with filenames.
+ */
+
+#ifdef FZ_WINDOWS
+typedef std::wstring native_string;
+#endif
+#if defined(FZ_UNIX) || defined(FZ_MAC)
+typedef std::string native_string;
+#endif
+
+/** \brief Converts std::string to native_string.
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ */
+native_string FZ_PUBLIC_SYMBOL to_native(std::string const& in);
+
+/** \brief Convert std::wstring to native_string.
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ */
+native_string FZ_PUBLIC_SYMBOL to_native(std::wstring const& in);
+
+/** \brief Locale-sensitive stricmp
+ *
+ * Like std::string::compare but case-insensitive, respecting locale.
+ *
+ * \note does not handle embedded null
+ */
+int FZ_PUBLIC_SYMBOL stricmp(std::string const& a, std::string const& b);
+int FZ_PUBLIC_SYMBOL stricmp(std::wstring const& a, std::wstring const& b);
+
+/** \brief Converts ASCII uppercase characters to lowercase as if C-locale is used.
+
+ Under some locales there is a different case-relationship
+ between the letters a-z and A-Z as one expects from ASCII under the C locale.
+ In Turkish for example there are different variations of the letter i,
+ namely dotted and dotless. What we see as 'i' is the lowercase dotted i and
+ 'I' is the  uppercase dotless i. Since std::tolower is locale-aware, I would
+ become the dotless lowercase i.
+
+ This is not always what we want. FTP commands for example are case-insensitive
+ ASCII strings, LIST and list are the same.
+
+ tolower_ascii instead converts all types of 'i's to the ASCII i as well.
+
+ \return  A-Z becomes a-z.\n In addition dotless lowercase i and dotted uppercase i also become the standard i.
+
+ */
+template<typename Char>
+Char tolower_ascii(Char c) {
+	if (c >= 'A' && c <= 'Z') {
+		return c + ('a' - 'A');
+	}
+	return c;
+}
+
+template<>
+std::wstring::value_type FZ_PUBLIC_SYMBOL tolower_ascii(std::wstring::value_type c);
+
+/// \brief Converts ASCII lowercase characters to uppercase as if C-locale is used.
+template<typename Char>
+Char toupper_ascii(Char c) {
+	if (c >= 'a' && c <= 'z') {
+		return c + ('A' - 'a');
+	}
+	return c;
+}
+
+template<>
+std::wstring::value_type FZ_PUBLIC_SYMBOL toupper_ascii(std::wstring::value_type c);
+
+/** \brief tr_tolower_ascii does for strings what tolower_ascii does for individual characters
+ */
+ // Note: For UTF-8 strings it works on individual octets!
+template<typename String>
+String str_tolower_ascii(String const& s)
+{
+	String ret = s;
+	for (auto& c : ret) {
+		c = tolower_ascii(c);
+	}
+	return ret;
+}
+
+template<typename String>
+String str_toupper_ascii(String const& s)
+{
+	String ret = s;
+	for (auto& c : ret) {
+		c = toupper_ascii(c);
+	}
+	return ret;
+}
+
+/** \brief Comparator to be used for std::map for case-insentitive keys
+ *
+ * Comparision is done locale-agnostic.
+ * Useful for key-value pairs in protocols, e.g. HTTP headers.
+ */
+struct FZ_PUBLIC_SYMBOL less_insensitive_ascii final
+{
+	template<typename T>
+	bool operator()(T const& lhs, T const& rhs) const {
+		return std::lexicographical_compare(lhs.cbegin(), lhs.cend(), rhs.cbegin(), rhs.cend(),
+		    [](typename T::value_type const& a, typename T::value_type const& b) {
+			    return tolower_ascii(a) < tolower_ascii(b);
+		    }
+		);
+	}
+};
+
+/** \brief Locale-insensitive stricmp
+ *
+ * Equivalent to str_tolower_ascii(a).compare(str_tolower_ascii(b));
+ */
+template<typename String>
+bool equal_insensitive_ascii(String const& a, String const& b)
+{
+	return std::equal(a.cbegin(), a.cend(), b.cbegin(), b.cend(),
+	    [](typename String::value_type const& a, typename String::value_type const& b) {
+		    return tolower_ascii(a) == tolower_ascii(b);
+	    }
+	);
+}
+
+/** \brief Converts from std::string in system encoding into std::wstring
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ *
+ * \note Does not handle embedded nulls
+ */
+std::wstring FZ_PUBLIC_SYMBOL to_wstring(std::string const& in);
+
+/// Returns identity, that way to_wstring can be called with native_string.
+inline std::wstring FZ_PUBLIC_SYMBOL to_wstring(std::wstring const& in) { return in; }
+
+/// Converts from arithmetic type to std::wstring
+template<typename Arg>
+inline typename std::enable_if<std::is_arithmetic<std::decay_t<Arg>>::value, std::wstring>::type to_wstring(Arg && arg)
+{
+	return std::to_wstring(std::forward<Arg>(arg));
+}
+
+
+/** \brief Converts from std::string in UTF-8 into std::wstring
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ */
+std::wstring FZ_PUBLIC_SYMBOL to_wstring_from_utf8(std::string const& in);
+std::wstring FZ_PUBLIC_SYMBOL to_wstring_from_utf8(char const* s, size_t len);
+
+/** \brief Converts from std::wstring into std::string in system encoding
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ *
+ * \note Does not handle embedded nulls
+ */
+std::string FZ_PUBLIC_SYMBOL to_string(std::wstring const& in);
+
+/// Returns identity, that way to_string can be called with native_string.
+inline std::string FZ_PUBLIC_SYMBOL to_string(std::string const& in) { return in; }
+
+/// Converts from arithmetic type to std::string
+template<typename Arg>
+inline typename std::enable_if<std::is_arithmetic<std::decay_t<Arg>>::value, std::string>::type to_string(Arg && arg)
+{
+	return std::to_string(std::forward<Arg>(arg));
+}
+
+
+/// Returns length of 0-terminated character sequence. Works with both narrow and wide-characters.
+template<typename Char>
+size_t strlen(Char const* str) {
+	return std::char_traits<Char>::length(str);
+}
+
+
+/** \brief Converts from std::string in native encoding into std::string in UTF-8
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ *
+ * \note Does not handle embedded nulls
+ */
+std::string FZ_PUBLIC_SYMBOL to_utf8(std::string const& in);
+
+/** \brief Converts from std::wstring in native encoding into std::string in UTF-8
+ *
+ * \return the converted string on success. On failure an empty string is returned.
+ *
+ * \note Does not handle embedded nulls
+ */
+std::string FZ_PUBLIC_SYMBOL to_utf8(std::wstring const& in);
+
+/// Calls either fz::to_string or fz::to_wstring depending on the passed template argument
+template<typename String, typename Arg>
+inline auto toString(Arg&& arg) -> typename std::enable_if<std::is_same<String, std::string>::value, decltype(to_string(std::forward<Arg>(arg)))>::type
+{
+	return to_string(std::forward<Arg>(arg));
+}
+
+template<typename String, typename Arg>
+inline auto toString(Arg&& arg) -> typename std::enable_if<std::is_same<String, std::wstring>::value, decltype(to_wstring(std::forward<Arg>(arg)))>::type
+{
+	return to_wstring(std::forward<Arg>(arg));
+}
+
+#if !defined(fzT) || defined(DOXYGEN)
+#ifdef FZ_WINDOWS
+/** \brief Macro for a string literal in system-native character type.\n Note: Macro definition changes depending on platform!
+ *
+ * Example: \c fzT("this string is wide on Windows and narrow elsewhere")
+ */
+#define fzT(x) L ## x
+#else
+/** \brief Macro for a string literal in system-native character type.\n Note: Macro definition changes depending on platform!
+ *
+ * Example: \c fzT("this string is wide on Windows and narrow elsewhere")
+ */
+#define fzT(x) x
+#endif
+#endif
+
+ /// Returns the function argument of the type matching the template argument. \sa fzS
+template<typename Char>
+Char const* choose_string(char const* c, wchar_t const* w);
+
+template<> inline char const* choose_string(char const* c, wchar_t const*) { return c; }
+template<> inline wchar_t const* choose_string(char const*, wchar_t const* w) { return w; }
+
+#if !defined(fzS) || defined(DOXYGEN)
+/** \brief Macro to get const pointer to a string of the corresponding type
+ *
+ * Useful when using string literals in templates where the type of string
+ * is a template argument:
+ * \code
+ *   template<typename String>
+ *   String append_foo(String const& s) {
+ *       s += fzS(String::value_type, "foo");
+ *   }
+ * \endcode
+ */
+#define fzS(Char, s) fz::choose_string<Char>(s, L ## s)
+#endif
+
+ /// Returns \c in with all occurrences of \c find in the input string replaced with \c replacement
+std::string FZ_PUBLIC_SYMBOL replaced_substrings(std::string const& in, std::string const& find, std::string const& replacement);
+std::wstring FZ_PUBLIC_SYMBOL replaced_substrings(std::wstring const& in, std::wstring const& find, std::wstring const& replacement);
+
+/// Modifies \c in, replacing all occurrences of \c find with \c replacement
+bool FZ_PUBLIC_SYMBOL replace_substrings(std::string& in, std::string const& find, std::string const& replacement);
+bool FZ_PUBLIC_SYMBOL replace_substrings(std::wstring& in, std::wstring const& find, std::wstring const& replacement);
+
+/**
+ * \brief Tokenizes string.
+ *
+ * \param delims the delimiters to look for
+ * \param ignore_empty If true, empty tokens are omitted in the output
+ */
+template<typename String, typename Delim, typename Container = std::vector<String>>
+Container strtok(String const& s, Delim const& delims, bool const ignore_empty = true)
+{
+	Container ret;
+
+	typename String::size_type start{}, pos{};
+	do {
+		pos = s.find_first_of(delims, start);
+
+		// Not found, we're at ends;
+		if (pos == String::npos) {
+			if (start < s.size()) {
+				ret.emplace_back(s.substr(start));
+			}
+		}
+		else if (pos > start || !ignore_empty) {
+			// Non-empty substring
+			ret.emplace_back(s.substr(start, pos - start));
+		}
+		start = pos + 1;
+	} while (pos != String::npos);
+
+	return ret;
+}
+
+// Converts string to integral type T. If string is not convertible, T() is returned.
+template<typename T, typename String>
+T to_integral(String const& s, T const errorval = T())
+{
+	T ret{};
+
+	auto it = s.cbegin();
+	if (it != s.cend() && (*it == '-' || *it == '+')) {
+		++it;
+	}
+
+	if (it == s.cend()) {
+		return errorval;
+	}
+
+	for (; it != s.cend(); ++it) {
+		auto const& c = *it;
+		if (c < '0' || c > '9') {
+			return errorval;
+		}
+		ret *= 10;
+		ret += c - '0';
+	}
+
+	if (!s.empty() && s.front() == '-') {
+		return ret *= static_cast<T>(-1);
+	}
+	else {
+		return ret;
+	}
+}
+
+/// \brief Returns true iff the string only has characters in the 7-bit ASCII range
+template<typename String>
+bool str_is_ascii(String const& s) {
+	for (auto const& c : s) {
+		if (static_cast<std::make_unsigned_t<typename String::value_type>>(c) > 127) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/// \brief Return passed string with all leading and trailing whitespace removed
+template<typename String>
+String trimmed(String const& s, String const& chars = fzS(typename String::value_type, " \r\n\t"), bool fromLeft = true, bool fromRight = true) {
+	size_t const first = fromLeft ? s.find_first_not_of(chars) : 0;
+	if (first == String::npos) {
+		return String();
+	}
+
+	size_t const last = fromRight ? s.find_last_not_of(chars) : s.size();
+	if (last == String::npos) {
+		return String();
+	}
+	return s.substr(first, last - first + 1);
+}
+
+template<typename String>
+String ltrimmed(String const& s, String const& chars = fzS(typename String::value_type, " \r\n\t")) {
+	return trimmed(s, chars, true, false);
+}
+
+template<typename String>
+String rtrimmed(String const& s, String const& chars = fzS(typename String::value_type, " \r\n\t")) {
+	return trimmed(s, chars, false, true);
+}
+
+/// \brief Remove all leading and trailing whitespace from string
+template<typename String>
+void trim(String & s, String const& chars = fzS(typename String::value_type, " \r\n\t")) {
+	s = trimmed(s, chars);
+}
+
+template<typename String>
+void ltrim(String & s, String const& chars = fzS(typename String::value_type, " \r\n\t")) {
+	s = trimmed(s, chars, true, false);
+}
+
+template<typename String>
+void rtrim(String & s, String const& chars = fzS(typename String::value_type, " \r\n\t")) {
+	s = trimmed(s, chars, false, true);
+}
+
+/** \brief Tests whether the first string starts with the second string
+ *
+ * \param insensitive_ascii If true, comparison is case-insensitive
+ */
+template<bool insensitive_ascii = false, typename String>
+bool starts_with(String const& s, String const& beginning)
+{
+	if (beginning.size() > s.size()) {
+		return false;
+	}
+	if (insensitive_ascii) {
+		return std::equal(beginning.begin(), beginning.end(), s.begin(), [](typename String::value_type const& a, typename String::value_type const& b) {
+			return tolower_ascii(a) == tolower_ascii(b);
+		});
+	}
+	else {
+		return std::equal(beginning.begin(), beginning.end(), s.begin());
+	}
+}
+
+/** \brief Tests whether the first string ends with the second string
+ *
+ * \param insensitive_ascii If true, comparison is case-insensitive
+ */
+template<bool insensitive_ascii = false, typename String>
+bool ends_with(String const& s, String const& ending)
+{
+	if (ending.size() > s.size()) {
+		return false;
+	}
+
+	if (insensitive_ascii) {
+		return std::equal(ending.rbegin(), ending.rend(), s.rbegin(), [](typename String::value_type const& a, typename String::value_type const& b) {
+			return tolower_ascii(a) == tolower_ascii(b);
+		});
+	}
+	else {
+		return std::equal(ending.rbegin(), ending.rend(), s.rbegin());
+	}
+}
+
+}
+
+#endif

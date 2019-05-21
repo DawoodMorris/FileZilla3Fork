@@ -110,7 +110,7 @@ clean_files()
 {
   if [ -d "$WORKDIR" ]; then
     cd "$WORKDIR" #To get out of a subdir
-    rm -rf "$WORKDIR/FileZilla3"
+    rm -rf "$WORKDIR/dist"
     rm -rf "$WORKDIR/clientscripts"
     rm -f "$WORKDIR/clientscripts.tar.bz2"
   fi
@@ -201,7 +201,7 @@ mkdir -p "$WORKDIR/source"
 
 resetPackages || buildfailure || exit 1
 while getPackage; do
-  rsync -av --delete --exclude .svn/ --exclude .git/ --chmod=o+r,Do+x "$CVSDIR/${PACKAGE_REPO}/" "$WORKDIR/source/${PACKAGE_REPO}" || buildfailure || exit 1
+  rsync -av --delete --exclude .svn/ --exclude .git/ --chmod=o+r,Do+x "$CVSDIR/${PACKAGE_REPO}/" "$WORKDIR/source/${PACKAGE}" || buildfailure || exit 1
 done
 
 applypatches

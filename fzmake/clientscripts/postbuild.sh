@@ -112,7 +112,7 @@ mkdir "$WORKDIR/debug"
 
 if echo "$TARGET" | grep 'mingw\|^win..$'; then
 
-  MAKENSIS=(wine c:\\Program\ Files\\NSIS\\makensis.exe)
+  MAKENSIS=(wine c:\\Program\ Files\ \(x86\)\\NSIS\\makensis.exe)
 
   do_strip "$WORKDIR/$PACKAGE/src/interface" "filezilla.exe" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/putty" "fzputtygen.exe" "$WORKDIR/debug"
@@ -181,8 +181,13 @@ else
   mkdir -p "$PACKAGE/lib"
   for i in "$PACKAGE"/bin/*; do
     copy_sos `ldd "$i" | grep '=> /home' | sed 's/.*=> //' | sed 's/ .*//'`
-    chrpath -r '$ORIGIN/../lib' $i || true
+    #chrpath -r '$ORIGIN/../lib' $i || true
+    patchelf --set-rpath '$ORIGIN/../lib' "$i"
   done
+  for i in "$PACKAGE"/lib/*; do
+    patchelf --remove-rpath "$i"
+  done
+
   do_strip "$PACKAGE/bin" filezilla "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzputtygen "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzsftp "$WORKDIR/debug"

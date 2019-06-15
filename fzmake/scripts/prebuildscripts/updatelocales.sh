@@ -8,18 +8,22 @@
 
 updatelocales()
 {
-  local WWWLOCALES="/var/www/locales"
+  local PACKAGE="$1"
+  local POT="$2.pot"
+  local WWWLOCALES="$HOME/output/locales/$PACKAGE"
+
+  mkdir -p "$WWWLOCALES"
 
   echo "Updating locales page"
 
-  cd "$WORKDIR/FileZilla3/locales"
+  cd "$WORKDIR/$PACKAGE/locales" >> $LOG 2>&1 || return 1
   nice make -j`cpu_count` >> $LOG 2>&1 || return 1
 
   echo "Copying locales"
 
   # Copy pot template
-  cp filezilla.pot $WWWLOCALES/filezilla.pot || return 1
-  chmod 775 $WWWLOCALES/filezilla.pot
+  cp "$POT" "$WWWLOCALES/$POT" || return 1
+  chmod 664 "$WWWLOCALES/$POT"
 
   rm -f $WWWLOCALES/stats~
 
@@ -30,9 +34,9 @@ updatelocales()
     PO=${i%.new}
 
     cp $i $WWWLOCALES/$PO
-    chmod 775 $WWWLOCALES/$PO
+    chmod 664 $WWWLOCALES/$PO
     cp $FILE.mo $WWWLOCALES/
-    chmod 775 $WWWLOCALES/$FILE.mo
+    chmod 665 $WWWLOCALES/$FILE.mo
 
     cp $i $i~
 
@@ -93,8 +97,10 @@ EOF
 
   done
 
-  chmod 775 $WWWLOCALES/stats~
+  chmod 664 $WWWLOCALES/stats~
   mv $WWWLOCALES/stats~ $WWWLOCALES/stats
 }
 
-updatelocales
+updatelocales lfz libfilezilla
+updatelocales fz filezilla
+

@@ -6,7 +6,7 @@
 echo "Minifying XML files"
 
 cd "$WORKDIR/source/FileZilla3/src/interface/resources"
-for i in defaultfilters.xml xrc/*.xrc theme.xml */theme.xml; do
+for i in defaultfilters.xml xrc/*.xrc */theme.xml; do
   xmllint --noblanks "$i" > "$i~"
   mv "$i~" "$i"
 done

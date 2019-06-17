@@ -16,7 +16,7 @@ updatelocales()
 
   echo "Updating locales page"
 
-  cd "$WORKDIR/$PACKAGE/locales" >> $LOG 2>&1 || return 1
+  cd "$WORKDIR/dist/$PACKAGE/locales" >> $LOG 2>&1 || return 1
   nice make -j`cpu_count` >> $LOG 2>&1 || return 1
 
   echo "Copying locales"
@@ -101,6 +101,6 @@ EOF
   mv $WWWLOCALES/stats~ $WWWLOCALES/stats
 }
 
-updatelocales lfz libfilezilla
-updatelocales fz filezilla
+updatelocales lfz libfilezilla || return 1
+updatelocales fz filezilla || return 1
 

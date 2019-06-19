@@ -9,8 +9,9 @@
 updatelocales()
 {
   local PACKAGE="$1"
-  local POT="$2.pot"
-  local WWWLOCALES="$HOME/output/locales/$PACKAGE"
+  local TARGET="$2"
+  local POT="$3.pot"
+  local WWWLOCALES="$HOME/output/locales/$TARGET"
 
   mkdir -p "$WWWLOCALES"
 
@@ -101,6 +102,6 @@ EOF
   mv $WWWLOCALES/stats~ $WWWLOCALES/stats
 }
 
-updatelocales lfz libfilezilla || return 1
-updatelocales fz filezilla || return 1
+updatelocales lfz lfz libfilezilla || return 1
+updatelocales FileZilla3 fz filezilla || return 1
 

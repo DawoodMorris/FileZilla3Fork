@@ -192,6 +192,14 @@ else
   do_strip "$PACKAGE/bin" fzputtygen "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzsftp "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzstorj "$WORKDIR/debug"
+
+  lfz_prefix=`pkg-config --variable=prefix libfilezilla`
+  for i in "${lfz_prefix}"/share/locale/*/LC_MESSAGES/libfilezilla.mo; do
+    locale=`echo $i | sed 's/.*\/\([^\/\]*\)\/LC_MESSAGES\/libfilezilla.mo/\1/'`
+    mkdir -p "$PACKAGE/share/locale/$locale/LC_MESSAGES" || exit 1
+    cp "$i" "$PACKAGE/share/locale/$locale/LC_MESSAGES/libfilezilla.mo" || exit 1
+  done
+
   tar -cjf "$OUTPUTDIR/$TARGET/$PACKAGE.tar.bz2" $PACKAGE || exit 1
   cd "$OUTPUTDIR/$TARGET" || exit 1
   $SHASUM --binary "$PACKAGE.tar.bz2" > "$PACKAGE.tar.bz2.sha512" || exit 1

@@ -19,5 +19,5 @@ makedist_package()
 makedist()
 {
   makedist_package lfz libfilezilla-src.tar.bz2 || return 1
-  makedist_package fz FileZilla3-src.tar.bz2 || return 1
+  makedist_package FileZilla3 FileZilla3-src.tar.bz2 || return 1
 }

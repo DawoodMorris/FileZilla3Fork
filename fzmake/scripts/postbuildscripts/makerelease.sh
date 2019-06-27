@@ -2,13 +2,13 @@
 
 makerelease()
 {
-  local RELEASEDIR="/home/nightlybuild/releases"
+  local RELEASEDIR="/home/nightlybuild/output/releases"
+  local CONFIGUREIN="$WORKDIR/source/FileZilla3/configure.ac"
+  local UPDATER_SIGN="$HOME/updater_sign/updater_sign"
 
   rm -rf "$RELEASEDIR" > /dev/null 2>&1
   mkdir -p "$RELEASEDIR"
   mkdir -p "$RELEASEDIR/debug"
-
-  local CONFIGUREIN="$WORKDIR/source/FileZilla3/configure.ac"
 
   local version=
 
@@ -42,6 +42,9 @@ makerelease()
       if [ "$sext" = "sha512" ]; then
         continue
       fi
+      if [ "$sext" = "sig" ]; then
+        continue
+      fi
 
       if echo "$i" | grep debug > /dev/null; then
         local name="FileZilla_${version}_${TARGET}_debug.tar.bz2"
@@ -56,15 +59,15 @@ makerelease()
       case "$TARGET" in
         x86_64*mingw*|win64)
           platform=win64
-	  if [ "$lext" = "exe" ]; then
-	    platform="${platform}-setup"
-	  fi
+          if [ "$lext" = "exe" ]; then
+            platform="${platform}-setup"
+          fi
           ;;
         i?86*mingw*|win32)
           platform=win32
-	  if [ "$lext" = "exe" ]; then
-	    platform="${platform}-setup"
-	  fi
+          if [ "$lext" = "exe" ]; then
+            platform="${platform}-setup"
+          fi
           ;;
         *64-apple*|*86-apple*)
           platform="macosx-x86"
@@ -89,6 +92,7 @@ makerelease()
       if [ "$hash" = "1" ]; then
         pushd "${RELEASEDIR}" > /dev/null
         sha512sum --binary "${name}" >> "FileZilla_${version}.sha512"
+        "${UPDATER_SIGN}" --hash --base64 --tag "${version}" "${name}" >> "FileZilla_${version}.sig"
         popd
       fi
     done

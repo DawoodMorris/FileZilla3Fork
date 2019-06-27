@@ -9,6 +9,8 @@ fixupdatecheck()
   local LATEST="$HOME/output/nightlies/latest.php"
   local WWWDIR="https://filezilla-project.org/nightlies"
 
+  local UPDATER_SIGN="$HOME/updater_sign/updater_sign"
+
   cd "$OUTPUTDIR"
   for TARGET in *; do
     if ! [ -f "$OUTPUTDIR/$TARGET/build.log" ]; then
@@ -38,8 +40,9 @@ fixupdatecheck()
         continue;
       fi
 
-      SUM=`sha512sum "$FILE"`
-      SUM=${SUM% *}
+      SUM=`sha512sum -b "$FILE"`
+      SIG=`cat "$FILE" | "${UPDATER_SIGN}" --hash --base64 --tag "$DATE"`
+      SUM=${SUM%% *}
       SIZE=`stat -c%s "$FILE"`
 
       if ! [ -f "$LATEST" ]; then
@@ -53,6 +56,7 @@ fixupdatecheck()
       echo "\$nightlies['$TARGET']['file'] = '$WWWDIR/$DATE/$TARGET/$FILE';" >> $LATEST.new
       echo "\$nightlies['$TARGET']['sha512'] = '$SUM';" >> $LATEST.new
       echo "\$nightlies['$TARGET']['size'] = '$SIZE';" >> $LATEST.new
+      echo "\$nightlies['$TARGET']['sig'] = '$SIG';" >> $LATEST.new
       echo "?>" >> $LATEST.new
       mv $LATEST.new $LATEST
     done

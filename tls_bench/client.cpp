@@ -38,10 +38,10 @@ struct connection_limit_event_type;
 typedef fz::simple_event<connection_limit_event_type, size_t> connection_limit_event;
 }
 
-struct client final : public fz::event_handler
+struct worker final : public fz::event_handler
 {
-	explicit client(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port);
-	virtual ~client();
+	explicit worker(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port, size_t workers);
+	virtual ~worker();
 
 	void create_conn();
 
@@ -54,14 +54,10 @@ struct client final : public fz::event_handler
 
 	void on_set_connection_limit(size_t limit);
 
-	void on_timer(fz::timer_id const&);
-
 	void done(std::unordered_map<fz::socket_event_source *, connection>::iterator it, char result);
 
 	fz::thread_pool & pool_;
 	fz::event_loop & loop_;
-
-	fz::timer_id timer_;
 
 	unsigned short const port_;
 
@@ -69,71 +65,58 @@ struct client final : public fz::event_handler
 
 	std::unordered_map<fz::socket_event_source *, connection> connections_;
 
+	fz::mutex mtx_;
 	std::unordered_map<char, std::pair<size_t, fz::duration>> stats_;
 };
 
-client::client(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port)
+worker::worker(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port, size_t conn_limit)
 	: fz::event_handler(loop)
 	, pool_(pool)
 	, loop_(loop)
 	, port_(port)
+	, connection_limit_(conn_limit)
 {
-	timer_ = add_timer(fz::duration::from_seconds(1), false);
+	send_event<connection_limit_event>(0);
 }
 
-client::~client()
+worker::~worker()
 {
 	remove_handler();
+
+	fz::scoped_lock l(mtx_);
 	connections_.clear();
 }
 
-void client::done(std::unordered_map<fz::socket_event_source *, connection>::iterator it, char result)
+void worker::done(std::unordered_map<fz::socket_event_source *, connection>::iterator it, char result)
 {
 	auto & conn = it->second;
 	auto duration = fz::datetime::now() - conn.start_;
 
-	auto & stats = stats_[result];
-	++stats.first;
-	stats.second += duration;
+	{
+		fz::scoped_lock l(mtx_);
 
-	std::cout << result << std::flush;
-	connections_.erase(it);
+		auto & stats = stats_[result];
+		++stats.first;
+		stats.second += duration;
+
+//	std::cout << result << std::flush;
+		connections_.erase(it);
+	}
 	send_event<connection_limit_event>(0);
 }
 
-void client::operator()(fz::event_base const& ev)
+void worker::operator()(fz::event_base const& ev)
 {
-	fz::dispatch<fz::socket_event, fz::certificate_verification_event, connection_limit_event, fz::timer_event>(ev, this,
-		&client::on_socket_event, &client::on_cert, &client::on_set_connection_limit, &client::on_timer);
+	fz::dispatch<fz::socket_event, fz::certificate_verification_event, connection_limit_event>(ev, this,
+		&worker::on_socket_event, &worker::on_cert, &worker::on_set_connection_limit);
 }
 
-void client::on_timer(fz::timer_id const&)
-{
-	if (!stats_.empty()) {
-		std::cout << "\n";
-		for (auto const& stat : stats_) {
-			std::cout << stat.first << " " << stat.second.first << " " << stat.second.second.get_milliseconds() / stat.second.first << "\n";
-		}
-		std::cout << std::flush;
-		stats_.clear();
-	}
-	if (!connections_.empty()) {
-		fz::duration busy;
-		auto const now = fz::datetime::now();
-		for (auto const& it : connections_) {
-			auto const& conn = it.second;
-			busy += now - conn.start_;
-		}
-		std::cout << "? " << connections_.size() << " " << busy.get_milliseconds() / connections_.size() << "\n";
-	}
-}
-
-void client::on_cert(fz::tls_layer * layer, fz::tls_session_info const&)
+void worker::on_cert(fz::tls_layer * layer, fz::tls_session_info const&)
 {
 	layer->set_verification_result(true);
 }
 
-void client::create_conn()
+void worker::create_conn()
 {
 	connection conn;
 	conn.start_ = fz::datetime::now();
@@ -152,16 +135,21 @@ void client::create_conn()
 	conn.layer_ = conn.tls_.get();
 	conn.expected_ = 1024*1024;
 	conn.send_buffer_.append(fz::sprintf("%d\n", conn.expected_));
+
 	connections_[conn.s_.get()] = std::move(conn);
 }
 
-void client::on_socket_event(fz::socket_event_source* s, fz::socket_event_flag t, int error)
+void worker::on_socket_event(fz::socket_event_source* s, fz::socket_event_flag t, int error)
 {
 	if (t == fz::socket_event_flag::connection_next) {
 		return;
 	}
 
 	auto it = connections_.find(s->root());
+	if (it == connections_.cend()) {
+		return;
+	}
+
 	auto & conn = it->second;
 
 	if (error) {
@@ -239,7 +227,7 @@ void client::on_socket_event(fz::socket_event_source* s, fz::socket_event_flag t
 	}
 }
 
-void client::on_write(std::unordered_map<fz::socket_event_source *, connection>::iterator it)
+void worker::on_write(std::unordered_map<fz::socket_event_source *, connection>::iterator it)
 {
 	auto & conn = it->second;
 
@@ -278,12 +266,13 @@ void client::on_write(std::unordered_map<fz::socket_event_source *, connection>:
 	}
 }
 
-void client::on_set_connection_limit(size_t limit)
+void worker::on_set_connection_limit(size_t limit)
 {
 	if (limit) {
 		connection_limit_ = limit;
 	}
 
+	fz::scoped_lock l(mtx_);
 	if (connection_limit_ > connections_.size()) {
 		size_t missing = connection_limit_ - connections_.size();
 		while (missing--) {
@@ -292,22 +281,101 @@ void client::on_set_connection_limit(size_t limit)
 	}
 }
 
+struct client final : public fz::event_handler
+{
+	explicit client(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port, size_t workers, size_t conn_limit);
+	virtual ~client();
+
+	virtual void operator()(fz::event_base const& ev) override;
+	void on_timer(fz::timer_id const&);
+
+	fz::timer_id timer_;
+
+	std::vector<std::pair<std::unique_ptr<fz::event_loop>, std::unique_ptr<worker>>> workers_;
+};
+
+client::client(fz::thread_pool & pool, fz::event_loop & loop, unsigned short port, size_t workers, size_t conn_limit)
+	: fz::event_handler(loop)
+{
+	timer_ = add_timer(fz::duration::from_seconds(10), false);
+
+	workers_.reserve(workers);
+	while (workers--) {
+		auto loop = std::make_unique<fz::event_loop>(pool);
+		auto w = std::make_unique<worker>(pool, *loop, port, conn_limit);
+		workers_.push_back(std::make_pair(std::move(loop), std::move(w)));
+	}
+}
+
+client::~client()
+{
+	remove_handler();
+	workers_.clear();
+}
+
+void client::operator()(fz::event_base const& ev)
+{
+	fz::dispatch<fz::timer_event>(ev, this, &client::on_timer);
+}
+
+void client::on_timer(fz::timer_id const&)
+{
+    std::unordered_map<char, std::pair<size_t, fz::duration>> stats;
+
+	fz::duration busy;
+	size_t count{};
+	auto const now = fz::datetime::now();
+
+	for (auto & wit : workers_) {
+		auto & worker = *wit.second;
+
+		fz::scoped_lock l(worker.mtx_);
+		for (auto const& stat : worker.stats_) {
+			stats[stat.first].first += stat.second.first;
+			stats[stat.first].second += stat.second.second;
+		}
+		worker.stats_.clear();
+
+		count += worker.connections_.size();
+		for (auto const& it : worker.connections_) {
+			auto const& conn = it.second;
+			busy += now - conn.start_;
+		}
+	}
+
+	if (!stats.empty()) {
+		for (auto const& stat : stats) {
+			std::cout << stat.first << " " << stat.second.first << " " << stat.second.second.get_milliseconds() / stat.second.first << "\n";
+		}
+		std::cout << std::flush;
+	}
+
+	if (count) {
+		std::cout << "? " << count << " " << busy.get_milliseconds() / count << "\n";
+	}
+
+}
+
 int main(int argc, char const ** const argv)
 {
-	if (argc < 3) {
-		std::cerr << "Need to pass port and connection limit" << std::endl;
+	if (argc < 4) {
+		std::cerr << "Need to pass port, workers and per-worker connection limit" << std::endl;
 		exit(1);
 	}
 
-	int port = fz::to_integral<unsigned short>(std::string_view(argv[1]));
+	unsigned short const port = fz::to_integral<unsigned short>(std::string_view(argv[1]));
+	size_t const workers = fz::to_integral<size_t>(std::string_view(argv[2]));
+	if (!workers) {
+		std::cerr << "No workers.\n";
+		exit(1);
+	}
+
+	size_t const conn_limit = fz::to_integral<size_t>(std::string_view(argv[3]));
 
 	fz::thread_pool pool;
 
 	fz::event_loop loop(fz::event_loop::threadless);
-
-	client s(pool, loop, port);
-
-	s.send_event<connection_limit_event>(fz::to_integral<size_t>(std::string_view(argv[2])));
+	client c(pool, loop, port, workers, conn_limit);
 
 	loop.run();
 

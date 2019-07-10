@@ -11,16 +11,16 @@
 namespace {
 struct logger final : public fz::logger_interface
 {
-        virtual void do_log(fz::logmsg::type, std::wstring &&) override {
-        };
+	virtual void do_log(fz::logmsg::type, std::wstring &&) override {
+	};
 };
 
 logger log;
 
 auto const& get_key_and_cert()
 {
-        static auto key_and_cert = fz::tls_layer::generate_selfsigned_certificate(fz::native_string(), "CN=tls_bench", {});
-        return key_and_cert;
+	static auto key_and_cert = fz::tls_layer::generate_selfsigned_certificate(fz::native_string(), "CN=tls_bench", {});
+	return key_and_cert;
 }
 
 std::vector<uint8_t> send_buffer;

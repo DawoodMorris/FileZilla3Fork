@@ -26,7 +26,9 @@ makepackage()
   top_srcdir=$(relpath "$(pwd)" "$PREFIX/packages/$PACKAGE/")
 
   if ! eval "${top_srcdir}/configure" "'--prefix=$WORKDIR/prefix/$PACKAGE'" $HOSTARG $FLAGS; then
-    cat config.log
+    if [ -f config.log ]; then
+      cat config.log
+    fi
     return 1
   fi
   if [ -z "$MAKE" ]; then

@@ -2,7 +2,10 @@
 
 makerelease()
 {
-  local RELEASEDIR="/home/nightlybuild/output/releases"
+  if [ -z "$RELEASEDIR" ]; then
+    RELEASEDIR="$HOME/output/releases"
+  fi
+
   local CONFIGUREIN="$WORKDIR/source/FileZilla3/configure.ac"
   local UPDATER_SIGN="$HOME/updater_sign/updater_sign"
 

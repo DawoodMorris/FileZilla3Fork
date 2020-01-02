@@ -134,6 +134,10 @@ applypatch()
   local PATCH=$1
   local PACKAGE=$2
 
+  if echo $PATCH | grep "/disabled/" > /dev/null 2>&1; then
+    return;
+  fi
+
   logprint "Applying $PATCH to $PACKAGE"
   cd $WORKDIR/source/$PACKAGE
   if patch -p0 -i $PATCHDIR/$PATCH -r - --dry-run >> $LOG 2>&1; then

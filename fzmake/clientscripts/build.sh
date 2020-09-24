@@ -1,5 +1,7 @@
 #! /bin/bash
 
+shopt -s nullglob
+
 export PREFIX="$1"
 export TARGET="$2"
 CHROOTED="$3"

@@ -21,7 +21,7 @@ updatecvs()
       svn update >> $LOG 2>&1 || return 1
     elif [ -d ".git" ]; then
       git pull  >> $LOG 2>&1 || return 1
-    else
+    elif ! [ -f ".norepo" ]; then
       logprint "Unknown repository type for package $PACKAGE"
       return 1
     fi

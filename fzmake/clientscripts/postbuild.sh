@@ -33,8 +33,8 @@ fi
 
 do_strip()
 {
-  if echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
-    if ! echo "$1/$2" | grep "\\.dylib" 2>&1 > /dev/null; then
+  if echo "$TARGET" | grep apple-darwin > /dev/null 2>&1; then
+    if ! echo "$1/$2" | grep "\\.dylib" > /dev/null 2>&1; then
       echo "Creating debug symbols for \"$1/$2\""
       dsymutil "$1/$2"
     fi
@@ -110,13 +110,17 @@ copy_sos()
 rm -rf "$WORKDIR/debug"
 mkdir "$WORKDIR/debug"
 
-if echo "$TARGET" | grep 'mingw\|^win..$'; then
+if echo "$TARGET" | grep 'mingw\|^win..$' > /dev/null; then
 
   MAKENSIS=(wine c:\\Program\ Files\ \(x86\)\\NSIS\\makensis.exe)
 
   do_strip "$WORKDIR/$PACKAGE/src/interface" "filezilla.exe" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/putty" "fzputtygen.exe" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/putty" "fzsftp.exe" "$WORKDIR/debug"
+  do_strip "$WORKDIR/$PACKAGE/src/storj" "fzstorj.exe" "$WORKDIR/debug"
+  if [ -f "$WORKDIR/$PACKAGE/src/regutil/fzregutil.exe" ]; then
+    do_strip "$WORKDIR/$PACKAGE/src/regutil" "fzregutil.exe" "$WORKDIR/debug"
+  fi
   do_strip "$WORKDIR/$PACKAGE/src/storj" "fzstorj.exe" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/fzshellext/32" "libfzshellext-0.dll" "$WORKDIR/debug"
   do_strip "$WORKDIR/$PACKAGE/src/fzshellext/64" "libfzshellext-0.dll" "$WORKDIR/debug"
@@ -149,7 +153,7 @@ if echo "$TARGET" | grep 'mingw\|^win..$'; then
   $SHASUM "FileZilla_3_setup.exe" > "FileZilla_3_setup.exe.sha512" || exit 1
   $SHASUM "FileZilla.zip" > "FileZilla.zip.sha512" || exit 1
 
-elif echo "$TARGET" | grep apple-darwin 2>&1 > /dev/null; then
+elif echo "$TARGET" | grep apple-darwin > /dev/null 2>&1; then
 
   cd "$WORKDIR/$PACKAGE"
   do_strip "FileZilla.app/Contents/MacOS" filezilla "$WORKDIR/debug"
@@ -179,19 +183,32 @@ else
   cd "$WORKDIR/prefix"
 
   mkdir -p "$PACKAGE/lib"
+
   for i in "$PACKAGE"/bin/*; do
     copy_sos `ldd "$i" | grep '=> /home' | sed 's/.*=> //' | sed 's/ .*//'`
     #chrpath -r '$ORIGIN/../lib' $i || true
     patchelf --set-rpath '$ORIGIN/../lib' "$i"
   done
+  rm -f "$PACKAGE"/lib/*.la
   for i in "$PACKAGE"/lib/*; do
-    patchelf --remove-rpath "$i"
+    if test -L "$i"; then
+      rm "$i"
+    else
+      patchelf --set-rpath '$ORIGIN' "$i"
+      #patchelf --remove-rpath "$i"
+    fi
   done
 
   do_strip "$PACKAGE/bin" filezilla "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzputtygen "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzsftp "$WORKDIR/debug"
   do_strip "$PACKAGE/bin" fzstorj "$WORKDIR/debug"
+
+  pushd "$PACKAGE/lib" > /dev/null
+  for i in *; do
+    do_strip "." "$i" "$WORKDIR/debug"
+  done
+  popd > /dev/null
 
   lfz_prefix=`pkg-config --variable=prefix libfilezilla`
   for i in "${lfz_prefix}"/share/locale/*/LC_MESSAGES/libfilezilla.mo; do

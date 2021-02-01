@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 			args.push_back(fz::to_native(argv[i]));
 		}
 		args.push_back(fz::to_native("1"));
-		runner r(loop, get_program_dir(argc, argv) + fzT("stresstest") + suffix, args);
+		runner r(loop, get_program_dir(argc, argv) + fzT("ftpstresstest") + suffix, args);
 
 		loop.run();
 	}

@@ -1,5 +1,6 @@
 #include <libfilezilla/event_handler.hpp>
 #include <libfilezilla/event_loop.hpp>
+#include <libfilezilla/time.hpp>
 #include <libfilezilla/buffer.hpp>
 #include <libfilezilla/logger.hpp>
 #include <libfilezilla/process.hpp>
@@ -83,6 +84,9 @@ public:
 			std::cerr << "Handshake failed\n";
 			exit(1);
 		}
+
+		add_timer(fz::duration::from_seconds(2), false);
+		lastread_ = fz::datetime::now();
 	}
 
 	~client()
@@ -92,7 +96,15 @@ public:
 
 	virtual void operator()(fz::event_base const& ev) override
 	{
-		fz::dispatch<fz::socket_event, fz::certificate_verification_event>(ev, this, &client::on_socket_event, &client::on_cert);
+		fz::dispatch<fz::socket_event, fz::certificate_verification_event, fz::timer_event>(ev, this, &client::on_socket_event, &client::on_cert, &client::on_timer);
+	}
+
+	void on_timer(fz::timer_id const&)
+	{
+		if ((fz::datetime::now() - lastread_) >= fz::duration::from_seconds(2)) {
+			std::cerr << "Read timeout\n";
+			exit(1);
+		}
 	}
 
 	void on_cert(fz::tls_layer* l, fz::tls_session_info const&)
@@ -119,6 +131,7 @@ public:
 
 
 			if (r > 0) {
+				lastread_ = fz::datetime::now();
 				send_event<fz::socket_event>(s, flag, 0);
 			}
 		}
@@ -148,6 +161,8 @@ public:
 	fz::buffer outbuffer_;
 	credentials creds_;
 
+	fz::datetime lastread_;
+
 	fz::thread_pool pool_;
 	logger logger_;
 	std::unique_ptr<fz::socket> s_;
@@ -158,10 +173,11 @@ public:
 class runner final : public fz::event_handler
 {
 public:
-	runner(fz::event_loop& l, fz::native_string const& self, std::vector<fz::native_string> const& args)
+	runner(fz::event_loop& l, fz::native_string const& self, std::vector<fz::native_string> const& args, size_t maxworkers)
 		: fz::event_handler(l)
 		, self_(self)
 		, args_(args)
+	    , maxworkers_(maxworkers)
 	{
 		t_ = add_timer(fz::duration::from_milliseconds(10), false);
 	}
@@ -179,7 +195,7 @@ public:
 	void on_timer(fz::timer_id const& id)
 	{
 		if (id == t_) {
-			if (workers_.size() < 100) {
+			if (workers_.size() < maxworkers_) {
 				std::cerr << ".";
 				auto p = std::make_unique<fz::process>();
 
@@ -195,8 +211,10 @@ public:
 		}
 	}
 
+
 	fz::native_string self_;
 	std::vector<fz::native_string> args_;
+	size_t maxworkers_{};
 
 	fz::timer_id t_;
 	std::map<fz::timer_id, std::unique_ptr<fz::process>> workers_;
@@ -204,31 +222,31 @@ public:
 
 int main(int argc, char *argv[])
 {
-	if (argc < 6) {
-		std::cerr << "Wrong args\n";
+	if (argc < 7) {
+		std::cerr << "Wrong args. Need: host port user pass implicittls maxworkers\n";
 		return 1;
 	}
 
 	fz::event_loop loop(fz::event_loop::threadless);
 
-	if (argc > 6) {
+	if (argv[1][0] == '!') {
 		credentials creds;
-		creds.host = argv[1];
-		creds.port = fz::to_integral<unsigned short>(argv[2]);
-		creds.user = argv[3];
-		creds.pass = argv[4];
-		creds.implicit_tls = argv[5][0] == '1';
+		creds.host = argv[2];
+		creds.port = fz::to_integral<unsigned short>(argv[3]);
+		creds.user = argv[4];
+		creds.pass = argv[5];
+		creds.implicit_tls = argv[6][0] == '1';
 
 		client c(loop, creds);
 		loop.run();
 	}
 	else {
 		std::vector<fz::native_string> args;
+		args.push_back(fz::to_native("!"));
 		for (size_t i = 1; i <= 5; ++i) {
 			args.push_back(fz::to_native(argv[i]));
 		}
-		args.push_back(fz::to_native("1"));
-		runner r(loop, get_program_dir(argc, argv) + fzT("ftpstresstest") + suffix, args);
+		runner r(loop, get_program_dir(argc, argv) + fzT("ftpstresstest") + suffix, args, fz::to_integral<size_t>(argv[6]));
 
 		loop.run();
 	}

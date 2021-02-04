@@ -6,3 +6,5 @@ all: ftpstresstest
 ftpstresstest: ftpstresstest.cpp
 	g++ $(CXXFLAGS) $< $(LDFLAGS) -o $@
 
+clean:
+	rm ftpstresstest

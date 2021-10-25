@@ -45,12 +45,18 @@ auto suffix = fzT(".exe");
 auto suffix = fzT("");
 #endif
 
+enum class tls_mode {
+	none,
+	implicit,
+	auth
+};
+
 struct credentials {
 	std::string host;
 	unsigned short port{};
 	std::string user;
 	std::string pass;
-	bool implicit_tls{};
+	tls_mode tls_;
 };
 
 struct logger : public fz::logger_interface
@@ -70,7 +76,7 @@ public:
 	{
 		s_ = std::make_unique<fz::socket>(pool_, this);
 		si_ = s_.get();
-		if (creds.implicit_tls) {
+		if (creds.tls_ == tls_mode::implicit) {
 			tls_ = std::make_unique<fz::tls_layer>(loop, this, *s_, nullptr, logger_);
 			si_ = tls_.get();
 		}
@@ -87,10 +93,6 @@ public:
 
 		add_timer(fz::duration::from_seconds(2), false);
 		lastread_ = fz::datetime::now();
-
-		if (fz::random_number(0, 1) == 1) {
-			// Ignore login, go straight to noop storm
-		}
 	}
 
 	~client()
@@ -103,8 +105,20 @@ public:
 		fz::dispatch<fz::socket_event, fz::certificate_verification_event, fz::timer_event>(ev, this, &client::on_socket_event, &client::on_cert, &client::on_timer);
 	}
 
-	void on_timer(fz::timer_id const&)
+	void on_timer(fz::timer_id const& id)
 	{
+		if (id == disruptor_) {
+			if (state_ == mlsd) {
+				if (fz::random_number(0, 1) == 1) {
+					data_s_.reset();
+				}
+				else {
+					outbuffer_.append("QUIT\r\n");
+					do_send();
+				}
+			}
+		}
+
 		if ((fz::datetime::now() - lastread_) >= fz::duration::from_seconds(2)) {
 			std::cerr << "Read timeout in state " << state_ << ", total read: " << total_read_ << ", total sent: " << total_sent_ << "\n";
 			exit(1);
@@ -124,6 +138,11 @@ public:
 
 	void on_socket_event(fz::socket_event_source * s, fz::socket_event_flag flag, int error)
 	{
+		if (s->root() != s_.get()) {
+			// For now ignore the data connection.
+			return;
+		}
+
 		if (error) {
 			std::cerr << "Socket error " << error << " on event " << (int)flag << " in state " << state_ << "\n";
 			exit(1);
@@ -221,9 +240,31 @@ public:
 				continue;
 			}
 
+			if (inbuffer_[0] == '1') {
+				inbuffer_.consume(i + 1);
+				continue;
+			}
+
+			if (state_ == epsv) {
+				auto line = inbuffer_.to_view();
+				size_t start = line.find("(|||");
+				size_t end = line.find("|)");
+				if (start != std::string::npos && end != std::string::npos && (start + 4) < end) {
+					auto port = fz::to_integral<unsigned short>(line.substr(start + 4, (end - start) - 4));
+					data_s_ = std::make_unique<fz::socket>(pool_, this);
+					data_s_->connect(fz::to_native(s_->peer_ip()), port, s_->address_family());
+					disruptor_ = add_timer(fz::duration::from_milliseconds(fz::random_number(0, 500)), true);
+				}
+			}
+
 			inbuffer_.consume(i + 1);
 
-			++state_;
+			if (fz::random_number(0, 2) == 10) {//fixme
+				state_ = noop;
+			}
+			else {
+				++state_;
+			}
 
 			send_next();
 		}
@@ -243,8 +284,12 @@ public:
 	{
 		switch (state_) {
 		case auth:
-			if (creds_.implicit_tls) {
-				state_ += 2;
+			if (creds_.tls_ == tls_mode::implicit) {
+				state_ = prot;
+				send_next();
+			}
+			else if (creds_.tls_ == tls_mode::none) {
+				state_ = user;
 				send_next();
 			}
 			else {
@@ -252,7 +297,7 @@ public:
 			}
 			break;
 		case handshake:
-			if (creds_.implicit_tls) {
+			if (creds_.tls_ == tls_mode::none) {
 				++state_;
 				send_next();
 			}
@@ -266,13 +311,25 @@ public:
 				}
 			}
 			break;
+		case prot:
+			outbuffer_.append("PROT P\r\n");
+			break;
 		case user:
 			outbuffer_.append("USER " + creds_.user + "\r\n");
 			break;
 		case pass:
 			outbuffer_.append("PASS " + creds_.pass + "\r\n");
 			break;
+		case epsv:
+			outbuffer_.append("EPSV\r\n");
+			break;
+		case mlsd:
+			outbuffer_.append("MLSD\r\n");
+			break;
 		case noop:
+			outbuffer_.append("quit\r\n");
+			break;
+
 			while (outbuffer_.size() < 4096) {
 				outbuffer_.append("NOOP\r\n");
 			}
@@ -288,8 +345,11 @@ public:
 		welcome,
 		auth,
 		handshake,
+		prot,
 		user,
 		pass,
+		epsv,
+		mlsd,
 		noop
 	};
 	int state_{};
@@ -306,6 +366,10 @@ public:
 	std::unique_ptr<fz::socket> s_;
 	std::unique_ptr<fz::tls_layer> tls_;
 	fz::socket_interface* si_{};
+
+	std::unique_ptr<fz::socket> data_s_;
+
+	fz::timer_id disruptor_{};
 
 	size_t total_read_{};
 	size_t total_sent_{};
@@ -342,7 +406,7 @@ public:
 				std::cerr << ".";
 				auto p = std::make_unique<fz::process>();
 
-				if (!p->spawn(self_, args_, false)) {
+				if (!p->spawn(self_, args_)) {
 					std::cerr << "Spawn failed\n";
 				}
 				fz::timer_id t = add_timer(fz::duration::from_milliseconds(fz::random_number(1, 5000)), true);
@@ -378,7 +442,7 @@ int main(int argc, char *argv[])
 		creds.port = fz::to_integral<unsigned short>(argv[3]);
 		creds.user = argv[4];
 		creds.pass = argv[5];
-		creds.implicit_tls = argv[6][0] == '1';
+		creds.tls_ = static_cast<tls_mode>(fz::to_integral<unsigned int>(argv[6]));
 
 		client c(loop, creds);
 		loop.run();

@@ -81,7 +81,7 @@ public:
 			si_ = tls_.get();
 		}
 
-		if (si_->connect(creds_.host, creds_.port)) {
+		if (si_->connect(fz::to_native(creds_.host), creds_.port)) {
 			std::cerr << "Connect failed\n";
 			exit(1);
 		}

@@ -156,7 +156,7 @@ public:
 			err_.create(true);
 	}
 
-	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, bool redirect_io, impersonation_token const* it = nullptr)
+	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, io_redirection redirect_mode, impersonation_token const* it = nullptr)
 	{
 		if (process_ != INVALID_HANDLE_VALUE) {
 			return false;
@@ -165,7 +165,7 @@ public:
 		STARTUPINFO si{};
 		si.cb = sizeof(si);
 
-		if (redirect_io) {
+		if (redirect_mode != io_redirection::none) {
 			if (!create_pipes()) {
 				return false;
 			}
@@ -197,11 +197,16 @@ public:
 		process_ = pi.hProcess;
 
 		// We don't need to use these
-		if (redirect_io) {
+		if (redirect_mode != io_redirection::none) {
 			reset_handle(pi.hThread);
 			reset_handle(in_.read_);
 			reset_handle(out_.write_);
 			reset_handle(err_.write_);
+			if (redirect_mode == io_redirection::closeall) {
+				reset_handle(in_.write_);
+				reset_handle(out_.read_);
+				reset_handle(err_.read_);
+			}
 		}
 
 		return true;
@@ -373,13 +378,13 @@ public:
 			err_.create();
 	}
 
-	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, bool redirect_io, std::vector<int> const& extra_fds = std::vector<int>(), impersonation_token const* it = nullptr)
+	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, io_redirection redirect_mode, std::vector<int> const& extra_fds = std::vector<int>(), impersonation_token const* it = nullptr)
 	{
 		if (pid_ != -1) {
 			return false;
 		}
 
-		if (redirect_io && !create_pipes()) {
+		if (redirect_mode != io_redirection::none && !create_pipes()) {
 			return false;
 		}
 
@@ -394,7 +399,7 @@ public:
 		else if (!pid) {
 			// We're the child.
 
-			if (redirect_io) {
+			if (redirect_mode != io_redirection::none) {
 				// Close uneeded descriptors
 				reset_fd(in_.write_);
 				reset_fd(out_.read_);
@@ -402,6 +407,8 @@ public:
 
 				// Redirect to pipe. The redirected descriptors don't have
 				// FD_CLOEXEC set.
+				// Note that even if redirect_mode is closeall, we still leave valid descriptors
+				// at stdin/out/err as we do not want to have these re-used for other things.
 				if (dup2(in_.read_, STDIN_FILENO) == -1 ||
 					dup2(out_.write_, STDOUT_FILENO) == -1 ||
 					dup2(err_.write_, STDERR_FILENO) == -1)
@@ -437,10 +444,15 @@ public:
 			pid_ = pid;
 
 			// Close unneeded descriptors
-			if (redirect_io) {
+			if (redirect_mode != io_redirection::none) {
 				reset_fd(in_.read_);
 				reset_fd(out_.write_);
 				reset_fd(err_.write_);
+				if (redirect_mode == io_redirection::closeall) {
+					reset_fd(in_.write_);
+					reset_fd(out_.read_);
+					reset_fd(err_.read_);
+				}
 			}
 		}
 
@@ -515,42 +527,42 @@ process::~process()
 	delete impl_;
 }
 
-bool process::spawn(native_string const& cmd, std::vector<native_string> const& args, bool redirect_io)
+bool process::spawn(native_string const& cmd, std::vector<native_string> const& args, io_redirection redirect_mode)
 {
-	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_io) : false;
+	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_mode) : false;
 }
 
 #if FZ_WINDOWS || FZ_UNIX
-bool process::spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, bool redirect_io)
+bool process::spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, io_redirection redirect_mode)
 {
 #if FZ_WINDOWS
-	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_io, &it) : false;
+	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_mode, &it) : false;
 #else
-	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_io, {}, &it) : false;
+	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_mode, {}, &it) : false;
 #endif
 }
 #endif
 
 #ifndef FZ_WINDOWS
-bool process::spawn(native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, bool redirect_io)
+bool process::spawn(native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, io_redirection redirect_mode)
 {
-	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_io, extra_fds) : false;
+	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_mode, extra_fds) : false;
 }
 
-bool process::spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, bool redirect_io)
+bool process::spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, io_redirection redirect_mode)
 {
-	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_io, extra_fds, &it) : false;
+	return impl_ ? impl_->spawn(cmd, args.cbegin(), args.cend(), redirect_mode, extra_fds, &it) : false;
 }
 
 #endif
 
-bool process::spawn(std::vector<native_string> const& command_with_args, bool redirect_io)
+bool process::spawn(std::vector<native_string> const& command_with_args, io_redirection redirect_mode)
 {
 	if (command_with_args.empty()) {
 		return false;
 	}
 	auto begin = command_with_args.begin() + 1;
-	return impl_ ? impl_->spawn(command_with_args.front(), begin, command_with_args.end(), redirect_io) : false;
+	return impl_ ? impl_->spawn(command_with_args.front(), begin, command_with_args.end(), redirect_mode) : false;
 }
 
 void process::kill()

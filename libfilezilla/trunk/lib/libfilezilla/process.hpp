@@ -32,6 +32,13 @@ public:
 	process(process const&) = delete;
 	process& operator=(process const&) = delete;
 
+	/// IO redirection modes.
+	enum class io_redirection {
+		redirect, /// Redirect the child's stdin/out/err to pipes which will be interacted with through fz::process::read and fz::process::write
+		none, /// Parent and child share the same stdin/out/err
+		closeall /// Redirects the child's stdin/out/err to pipes closed in the parent process
+	};
+
 	/** \brief Start the process
 	 *
 	 * This function takes care of properly quoting and escaping the the program's path and its arguments.
@@ -43,13 +50,13 @@ public:
 	 * \note May return \c true even if the process cannot be started. In that case, trying to read from the process
 	 * will fail with an error or EOF.
 	 */
-	bool spawn(native_string const& cmd, std::vector<native_string> const& args = std::vector<native_string>(), bool redirect_io = true);
+	bool spawn(native_string const& cmd, std::vector<native_string> const& args = std::vector<native_string>(), io_redirection redirect_mode = io_redirection::redirect);
 
-	bool spawn(std::vector<native_string> const& command_with_args, bool redirect_io = true);
+	bool spawn(std::vector<native_string> const& command_with_args, io_redirection redirect_mode = io_redirection::redirect);
 
 #if FZ_WINDOWS || FZ_UNIX
 	/// Creates a process running under the user represented by the impersonation token
-	bool spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, bool redirect_io = true);
+	bool spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, io_redirection redirect_mode = io_redirection::redirect);
 #endif
 
 #ifndef FZ_WINDOWS
@@ -59,9 +66,9 @@ public:
 	 * This function only exists on *nix, it is not needed on Windows where
 	 * DuplicateHandle() can be used instead with the target process as argument.
 	 */
-	bool spawn(native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, bool redirect_io = true);
+	bool spawn(native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, io_redirection redirect_mode = io_redirection::redirect);
 
-	bool spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, bool redirect_io = true);
+	bool spawn(impersonation_token const& it, native_string const& cmd, std::vector<native_string> const& args, std::vector<int> const& extra_fds, io_redirection redirect_mode = io_redirection::redirect);
 #endif
 
 	/** \brief Stops the spawned process

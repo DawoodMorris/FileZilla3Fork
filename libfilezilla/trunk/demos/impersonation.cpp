@@ -91,7 +91,9 @@ int main(int argc, char *argv[])
 	fz::create_socketpair(spair);
 
 	fz::process p;
-	bool spawned = p.spawn(t, get_program_dir(argc, argv) + "impersonation", {"MAGIC_VALUE!", fz::to_string(spair[1])}, {spair[1]}, false);
+
+	auto redir = fz::process::io_redirection::none; // For demo purposes. Use redirect or closeall in actual code.
+	bool spawned = p.spawn(t, get_program_dir(argc, argv) + "impersonation", {"MAGIC_VALUE!", fz::to_string(spair[1])}, {spair[1]}, redir);
 	std::cerr << "Parent: Spawned child? " << (spawned ? "Yes\n" : "No\n");
 	if (!spawned) {
 		abort();

@@ -92,7 +92,7 @@ bool recursive_remove::remove(std::list<native_string> dirsToVisit)
 
 	local_filesys fs;
 
-	// Process all dirctories that have to be visited
+	// Process all directories that have to be visited
 	while (!dirsToVisit.empty()) {
 		auto const iter = dirsToVisit.begin();
 		native_string const& path = *iter;

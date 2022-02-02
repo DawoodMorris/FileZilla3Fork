@@ -47,6 +47,7 @@ public:
 
 	/// Same as get()
 	unsigned char* data() { return pos_; }
+	unsigned char const* data() const { return pos_; }
 
 	/** \brief Returns a writable buffer guaranteed to be large enough for write_size bytes, call add when done.
 	 *

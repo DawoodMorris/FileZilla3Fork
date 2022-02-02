@@ -1,4 +1,4 @@
-﻿AC_INIT([libfilezilla],[0.35.0],[tim.kosse@filezilla-project.org],[],[https://lib.filezilla-project.org/])
+﻿AC_INIT([libfilezilla],[0.36.0],[tim.kosse@filezilla-project.org],[],[https://lib.filezilla-project.org/])
 
 # Update the version information only immediately before a public release of your software
 # If the library source code has changed at all since the last update, then increment revision (‘c:r:a’ becomes ‘c:r+1:a’).

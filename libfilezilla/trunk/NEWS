@@ -1,3 +1,12 @@
+0.36.0 (2022-02-02)
+
++ Added parameter to tls_layer::set_alpn to control which peer has priority over which ALPN is chosen.
++ Added fz::hmac_sha1
++ Mutex debugging framework to detect locking order inversions that may lead to deadlocks
++ Add additional io_redirect mode to fz::process_spawn where the parent-side handles for stdin/out/err are always closed
+- fz::json: Handle object members with empty string as name
+- Minor performance improvements to removing timers and to spawning processes
+
 0.35.0 (2021-12-08)
 
 + *nix: Added fz::forkblock which can be used to safely set FD_CLOEXEC on descriptors even if the system lacks SOCK_CLOCKEXEC, MSG_CMSG_CLOEXEC, pipe2 or accept4

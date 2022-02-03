@@ -1038,7 +1038,7 @@ int tls_layer_impl::continue_handshake()
 		std::string const cipherName = get_cipher();
 		std::string const macName = get_mac();
 
-		logger_.log(logmsg::debug_info, L"Protocol: %s, Key exchange: %s, Cipher: %s, MAC: %s", protocol, keyExchange, cipherName, macName);
+		logger_.log(logmsg::debug_info, L"Protocol: %s, Key exchange: %s, Cipher: %s, MAC: %s, ALPN: %s", protocol, keyExchange, cipherName, macName, get_alpn());
 
 		if (!server_) {
 			return verify_certificate();

@@ -47,15 +47,36 @@ passwd_holder get_passwd(fz::native_string const& username)
 	int res{};
 	do {
 		s *= 2;
-		ret.buf_.get(s);
 		res = getpwnam_r(username.c_str(), &ret.pwd_buffer_, reinterpret_cast<char*>(ret.buf_.get(s)), s, &ret.pwd_);
 	} while (res == ERANGE);
 
-	if (res) {
+	if (res || !ret.pwd_) {
 		ret.pwd_ = nullptr;
 	}
 
 	return ret;
+}
+
+std::optional<gid_t> get_group(fz::native_string const& gname)
+{
+	fz::buffer buf;
+
+	struct group g;
+	struct group *pg{};
+
+	size_t s = 1024;
+	int res{};
+	do {
+		s *= 2;
+		buf.get(s);
+		res = getgrnam_r(gname.c_str(), &g, reinterpret_cast<char*>(buf.get(s)), s, &pg);
+	} while (res == ERANGE);
+
+	if (!res && pg) {
+		return pg->gr_gid;
+	}
+
+	return {};
 }
 
 #if FZ_UNIX
@@ -210,7 +231,7 @@ impersonation_token::impersonation_token(fz::native_string const& username, fz::
 	}
 }
 
-impersonation_token::impersonation_token(fz::native_string const& username, impersonation_flag flag)
+impersonation_token::impersonation_token(fz::native_string const& username, impersonation_flag flag, fz::native_string const& group)
 {
 	if (flag == impersonation_flag::pwless) {
 		auto pwd = get_passwd(username);
@@ -221,7 +242,17 @@ impersonation_token::impersonation_token(fz::native_string const& username, impe
 				impl_->home_ = pwd.pwd_->pw_dir;
 			}
 			impl_->uid_ = pwd.pwd_->pw_uid;
-			impl_->gid_ = pwd.pwd_->pw_gid;
+			if (group.empty()) {
+				impl_->gid_ = pwd.pwd_->pw_gid;
+			}
+			else {
+				auto gid = get_group(group);
+				if (!gid) {
+					impl_.reset();
+					return;
+				}
+				impl_->gid_ = *gid;
+			}
 			impl_->sup_groups_ = get_supplementary(username, pwd.pwd_->pw_gid);
 		}
 	}

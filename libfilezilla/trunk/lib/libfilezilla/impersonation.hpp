@@ -42,7 +42,7 @@ public:
 
 #if !FZ_WINDOWS
 	/// Doesn't verify credentials
-	explicit impersonation_token(fz::native_string const& username, impersonation_flag flag);
+	explicit impersonation_token(fz::native_string const& username, impersonation_flag flag, fz::native_string const& group = {});
 #endif
 
 	~impersonation_token() noexcept;

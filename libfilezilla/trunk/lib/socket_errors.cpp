@@ -104,8 +104,11 @@ std::unordered_map<int, Error> const& get_errors()
 	#ifdef EAI_IDN_ENCODE
 		insert(EAI_IDN_ENCODE, fztranslate_mark("Invalid characters in hostname"));
 	#endif
+	#ifdef EADDRNOTAVAIL
+		insert(EADDRNOTAVAIL, fztranslate_mark("Cannot assign requested address"));
+	#endif
 
-		// Codes that have no POSIX equivalence
+	// Codes that have no POSIX equivalence
 	#ifdef FZ_WINDOWS
 		insert(WSANOTINITIALISED, fztranslate_mark("Not initialized, need to call WSAStartup"));
 		insert(WSAENETDOWN, fztranslate_mark("System's network subsystem has failed"));

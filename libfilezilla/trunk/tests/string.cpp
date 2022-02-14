@@ -196,6 +196,17 @@ void string_test::test_strtok()
 	CPPUNIT_ASSERT_EQUAL(std::string("a"), tokens[0]);
 	CPPUNIT_ASSERT_EQUAL(std::string("b"), tokens[1]);
 	CPPUNIT_ASSERT_EQUAL(std::string("c"), tokens[2]);
+
+	tokens = fz::strtok("a b  c  d   ", ' ', false);
+	CPPUNIT_ASSERT_EQUAL(size_t(8), tokens.size());
+	CPPUNIT_ASSERT_EQUAL(std::string("a"), tokens[0]);
+	CPPUNIT_ASSERT_EQUAL(std::string("b"), tokens[1]);
+	CPPUNIT_ASSERT_EQUAL(std::string(""), tokens[2]);
+	CPPUNIT_ASSERT_EQUAL(std::string("c"), tokens[3]);
+	CPPUNIT_ASSERT_EQUAL(std::string(""), tokens[4]);
+	CPPUNIT_ASSERT_EQUAL(std::string("d"), tokens[5]);
+	CPPUNIT_ASSERT_EQUAL(std::string(""), tokens[6]);
+	CPPUNIT_ASSERT_EQUAL(std::string(""), tokens[7]);
 }
 
 void string_test::test_startsendswith()

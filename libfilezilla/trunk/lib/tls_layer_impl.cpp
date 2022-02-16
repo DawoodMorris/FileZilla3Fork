@@ -1184,7 +1184,7 @@ void tls_layer_impl::failure(int code, bool send_close, std::wstring const& func
 	if (code) {
 		bool suppress{};
 		auto level = logmsg::error;
-		if (socket_eof_ && code == (GNUTLS_E_UNEXPECTED_PACKET_LENGTH || code == GNUTLS_E_PREMATURE_TERMINATION)) {
+		if (socket_eof_ && (code == GNUTLS_E_UNEXPECTED_PACKET_LENGTH || code == GNUTLS_E_PREMATURE_TERMINATION)) {
 			suppress = state_ == socket_state::shut_down && shutdown_silence_read_errors_;
 			if (!suppress && state_ == socket_state::connected && unexpected_eof_cb_) {
 				suppress = !unexpected_eof_cb_();

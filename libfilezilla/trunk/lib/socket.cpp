@@ -1261,8 +1261,10 @@ int socket_base::close()
 	}
 
 	scoped_lock l(socket_thread_->mutex_);
-	socket_thread_->fds_to_close_.emplace_back(fd_);
-	fd_ = -1;
+	if (fd_ != -1) {
+		socket_thread_->fds_to_close_.emplace_back(fd_);
+		fd_ = -1;
+	}
 
 	socket_thread_->host_.clear();
 	socket_thread_->port_.clear();

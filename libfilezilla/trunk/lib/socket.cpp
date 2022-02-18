@@ -373,6 +373,18 @@ private:
 #endif
 
 
+void close_socket_fds(std::vector<socket::socket_t> & fds_to_close)
+{
+	for (auto fd : fds_to_close) {
+#ifdef FZ_WINDOWS
+		closesocket(fd);
+#else
+		close(fd);
+#endif
+	}
+	fds_to_close.clear();
+}
+
 void close_socket_fd(socket::socket_t& fd)
 {
 	if (fd != -1) {
@@ -408,6 +420,7 @@ public:
 	{
 		thread_.join();
 		destroy_sync();
+		close_socket_fds(fds_to_close_);
 	}
 
 	int create_sync()
@@ -1149,6 +1162,7 @@ protected:
 					send_events();
 				}
 			}
+			close_socket_fds(fds_to_close_);
 		}
 
 		if (thread_) {
@@ -1171,6 +1185,8 @@ protected:
 	condition condition_;
 
 	async_task thread_;
+
+	std::vector<socket::socket_t> fds_to_close_;
 
 #ifdef FZ_WINDOWS
 	// We wait on this using WSAWaitForMultipleEvents
@@ -1245,7 +1261,7 @@ int socket_base::close()
 	}
 
 	scoped_lock l(socket_thread_->mutex_);
-	socket_t fd = fd_;
+	socket_thread_->fds_to_close_.emplace_back(fd_);
 	fd_ = -1;
 
 	socket_thread_->host_.clear();
@@ -1253,7 +1269,6 @@ int socket_base::close()
 
 	socket_thread_->wakeup_thread(l);
 
-	close_socket_fd(fd);
 	if (dynamic_cast<socket*>(this)) {
 		static_cast<socket*>(this)->state_ = socket_state::closed;
 	}

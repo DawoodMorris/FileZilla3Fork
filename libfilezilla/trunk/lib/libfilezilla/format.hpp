@@ -144,6 +144,23 @@ struct has_toString : std::false_type {};
 template<typename String, class Arg>
 struct has_toString<String, Arg, std::void_t<decltype(toString<String>(std::declval<Arg>()))>> : std::true_type {};
 
+template <int N>
+struct argument
+{
+	template <class Arg>
+	struct of_type
+	{
+		template <typename String>
+		static constexpr bool is_formattable_as = std::disjunction<
+			std::is_enum<std::decay_t<Arg>>,
+			std::is_arithmetic<std::decay_t<Arg>>,
+			std::is_pointer<std::decay_t<Arg>>,
+			std::is_same<String, std::decay_t<Arg>>,
+			has_toString<String, Arg>
+		>::value;
+	};
+};
+
 // Converts integral type to hex string with desired string type
 template<typename String, bool Lowercase, typename Arg>
 String integral_to_hex_string(Arg && arg) noexcept
@@ -365,6 +382,23 @@ parse_start:
 	return f;
 }
 
+template<typename String, typename Arg, int N>
+constexpr bool check_argument()
+{
+	static_assert(
+		argument<N>::template of_type<Arg>::template is_formattable_as<String>,
+		"Argument cannot be formatted by fz::sprintf()"
+	);
+
+	return argument<N>::template of_type<Arg>::template is_formattable_as<String>;
+}
+
+template<typename String, typename... Args, std::size_t... Is>
+constexpr bool check_arguments(std::index_sequence<Is...>)
+{
+	return (check_argument<String, Args, Is>() && ...);
+}
+
 template<typename InString, typename CharType = typename InString::value_type, typename OutString = std::basic_string<CharType>, typename... Args>
 OutString do_sprintf(InString const& fmt, Args&&... args)
 {
@@ -420,12 +454,16 @@ OutString do_sprintf(InString const& fmt, Args&&... args)
 template<typename... Args>
 std::string sprintf(std::string_view const& fmt, Args&&... args)
 {
+	detail::check_arguments<std::string, Args...>(std::index_sequence_for<Args...>());
+
 	return detail::do_sprintf(fmt, std::forward<Args>(args)...);
 }
 
 template<typename... Args>
 std::wstring sprintf(std::wstring_view const& fmt, Args&&... args)
 {
+	detail::check_arguments<std::wstring, Args...>(std::index_sequence_for<Args...>());
+
 	return detail::do_sprintf(fmt, std::forward<Args>(args)...);
 }
 

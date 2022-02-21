@@ -281,7 +281,7 @@ String extract_arg(field const& f, size_t arg_n, Arg&& arg, Args&&...args)
 	return ret;
 }
 
-template<typename InString, typename OutString, typename... Args>
+template<typename InString, typename OutString>
 field get_field(InString const& fmt, typename InString::size_type & pos, size_t& arg_n, OutString & ret)
 {
 	field f;

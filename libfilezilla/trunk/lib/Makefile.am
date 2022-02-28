@@ -83,7 +83,6 @@ nobase_include_HEADERS = \
 	libfilezilla/visibility_helper.hpp \
 	libfilezilla/private/defs.hpp \
 	libfilezilla/private/visibility.hpp \
-	libfilezilla/glue/windows.hpp \
 	libfilezilla/glue/wx.hpp \
 	libfilezilla/glue/wxinvoker.hpp
 
@@ -93,15 +92,22 @@ nobase_nodist_include_HEADERS = \
 libfilezilla_la_LDFLAGS = $(AM_LDFLAGS)
 libfilezilla_la_LIBADD = $(libdeps)
 
+dist_noinst_HEADERS = \
+	tls_layer_impl.hpp \
+	tls_system_trust_store_impl.hpp \
+	windows/dll.hpp \
+	windows/security_descriptor_builder.hpp
+
 if FZ_WINDOWS
 
 libfilezilla_la_SOURCES += \
 	windows/dll.cpp \
+	windows/registry.cpp \
 	windows/security_descriptor_builder.cpp
 
 nobase_include_HEADERS += \
-	windows/dll.hpp \
-	windows/security_descriptor_builder.hpp
+	libfilezilla/glue/registry.hpp \
+	libfilezilla/glue/windows.hpp
 
 windows/libfilezilla_rc.o: $(srcdir)/windows/libfilezilla.rc $(srcdir)/windows/manifest.xml windows/version.rc
 	@if [ -f $@~ ]; then rm $@~; fi
@@ -128,10 +134,6 @@ endif
 if FZ_UNIX
 libfilezilla_la_LDFLAGS += -lcrypt
 endif
-
-dist_noinst_HEADERS = \
-	tls_layer_impl.hpp \
-	tls_system_trust_store_impl.hpp
 
 libfilezilla_la_CPPFLAGS = $(AM_CPPFLAGS)
 libfilezilla_la_CPPFLAGS += -I$(top_builddir)/config

@@ -33,7 +33,7 @@ namespace {
 struct logger : public fz::logger_interface
 {
 	virtual void do_log(fz::logmsg::type, std::wstring &&) {
-	};
+	}
 };
 
 auto const& get_key_and_cert()

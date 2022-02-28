@@ -1,7 +1,7 @@
 #ifndef LIBFILEZILLA_GLUE_REGISTRY_HEADER
 #define LIBFILEZILLA_GLUE__REGISTRY_HEADER
 
-#include "../libfilezilla.h"
+#include "../libfilezilla.hpp"
 
 #ifdef FZ_WINDOWS
 

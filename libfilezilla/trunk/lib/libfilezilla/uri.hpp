@@ -21,7 +21,7 @@ namespace fz {
 class FZ_PUBLIC_SYMBOL uri final
 {
 public:
-	uri() = default;
+	uri() noexcept = default;
 	explicit uri(std::string_view const& in);
 
 	void clear();

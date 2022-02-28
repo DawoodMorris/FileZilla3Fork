@@ -5,6 +5,11 @@
 #include "string.h"
 
 namespace fz {
+json::json(json_type t)
+{
+	set_type(t);
+}
+
 void json::set_type(json_type t)
 {
 	if (type_ == t) {

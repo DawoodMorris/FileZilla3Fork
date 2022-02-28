@@ -35,10 +35,7 @@ public:
 	json(json &&) noexcept = default;
 
 	/// Explicitly creates a value of a specific type, mainly needed for null objects
-	explicit json(json_type t)
-	{
-		set_type(t);
-	}
+	explicit json(json_type t);
 
 	json_type type() const {
 		return type_;
@@ -157,10 +154,10 @@ private:
 	uint64_t number_value_integer() const;
 	double number_value_double() const;
 
-	bool check_type(json_type t);
-	void set_type(json_type t);
+	bool FZ_PRIVATE_SYMBOL check_type(json_type t);
+	void FZ_PRIVATE_SYMBOL set_type(json_type t);
 
-	static json parse(char const*& p, char const* end, size_t max_depth);
+	static json FZ_PRIVATE_SYMBOL parse(char const*& p, char const* end, size_t max_depth);
 
 	typedef std::variant<std::string, std::map<std::string, json, std::less<>>, std::vector<json>, bool> value_type;
 	value_type value_;

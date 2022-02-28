@@ -120,7 +120,7 @@ public:
 
 private:
 #ifdef FZ_WINDOWS
-	bool check_buffer();
+	bool FZ_PRIVATE_SYMBOL check_buffer();
 	std::vector<unsigned char> buffer_;
 	unsigned char* cur_{};
 	HANDLE dir_{INVALID_HANDLE_VALUE};

@@ -64,12 +64,12 @@ private:
 	friend class bucket_base;
 	friend class bucket;
 
-	void record_activity();
+	void FZ_PRIVATE_SYMBOL record_activity();
 
-	void operator()(event_base const& ev);
-	void on_timer(timer_id const&);
+	void FZ_PRIVATE_SYMBOL operator()(event_base const& ev);
+	void FZ_PRIVATE_SYMBOL on_timer(timer_id const&);
 
-	void process(rate_limiter* limiter, bool locked);
+	void FZ_PRIVATE_SYMBOL process(rate_limiter* limiter, bool locked);
 
 	std::atomic<int> activity_{2};
 	mutex mtx_{false};
@@ -212,29 +212,29 @@ private:
 	friend class bucket_base;
 	friend class rate_limit_manager;
 
-	virtual void lock_tree() override;
+	virtual void FZ_PRIVATE_SYMBOL lock_tree() override;
 
-	bool do_set_limit(direction::type const d, rate::type limit);
+	bool FZ_PRIVATE_SYMBOL do_set_limit(direction::type const d, rate::type limit);
 
-	virtual void update_stats(bool & active) override;
-	virtual size_t weight() const override { return weight_; }
-	virtual size_t unsaturated(direction::type const d) const override { return data_[d].unused_capacity_ ? data_[d].unsaturated_ : 0; }
-	virtual void set_mgr_recursive(rate_limit_manager * mgr) override;
+	virtual void FZ_PRIVATE_SYMBOL update_stats(bool & active) override;
+	virtual size_t FZ_PRIVATE_SYMBOL weight() const override { return weight_; }
+	virtual size_t FZ_PRIVATE_SYMBOL unsaturated(direction::type const d) const override { return data_[d].unused_capacity_ ? data_[d].unsaturated_ : 0; }
+	virtual void FZ_PRIVATE_SYMBOL set_mgr_recursive(rate_limit_manager * mgr) override;
 
-	virtual rate::type add_tokens(direction::type const d, rate::type tokens, rate::type limit) override;
-	virtual rate::type distribute_overflow(direction::type const d, rate::type tokens) override;
+	virtual rate::type FZ_PRIVATE_SYMBOL add_tokens(direction::type const d, rate::type tokens, rate::type limit) override;
+	virtual rate::type FZ_PRIVATE_SYMBOL distribute_overflow(direction::type const d, rate::type tokens) override;
 
-	virtual void unlock_tree() override;
+	virtual void FZ_PRIVATE_SYMBOL unlock_tree() override;
 
-	void pay_debt(direction::type const d);
+	void FZ_PRIVATE_SYMBOL pay_debt(direction::type const d);
 
-	virtual std::array<rate::type, 2> gather_unspent_for_removal() override;
+	virtual std::array<rate::type, 2> FZ_PRIVATE_SYMBOL gather_unspent_for_removal() override;
 
 	std::vector<bucket_base*> buckets_;
 	std::vector<size_t> scratch_buffer_;
 	size_t weight_{};
 
-	struct data_t {
+	struct FZ_PRIVATE_SYMBOL data_t {
 		rate::type limit_{rate::unlimited};
 		rate::type merged_tokens_;
 		rate::type overflow_{};
@@ -242,7 +242,8 @@ private:
 		rate::type unused_capacity_{};
 		rate::type carry_{};
 		size_t unsaturated_{};
-	} data_[2];
+	};
+	data_t data_[2];
 };
 
 /**

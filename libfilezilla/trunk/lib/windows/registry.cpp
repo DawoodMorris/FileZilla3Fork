@@ -53,7 +53,7 @@ bool regkey::has_value(std::wstring const& name) const
 {
 	DWORD type{};
 	DWORD size{};
-	return key_ && RegQueryValueEx(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS;
+	return key_ && RegQueryValueExW(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS;
 }
 
 namespace {
@@ -82,7 +82,7 @@ uint64_t read_int(HKEY key, std::wstring const& name)
 	uint64_t v{};
 	DWORD size = 8;
 	DWORD type{};
-	if (RegQueryValueEx(key, name.c_str(), nullptr, &type, reinterpret_cast<unsigned char*>(&v), &size) != ERROR_SUCCESS) {
+	if (RegQueryValueExW(key, name.c_str(), nullptr, &type, reinterpret_cast<unsigned char*>(&v), &size) != ERROR_SUCCESS) {
 		v = 0;
 	}
 
@@ -97,7 +97,7 @@ std::wstring regkey::value(std::wstring const& name) const
 	if (key_) {
 		DWORD type{};
 		DWORD size{};
-		if (RegQueryValueEx(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS) {
+		if (RegQueryValueExW(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS) {
 			if (type == REG_SZ || type == REG_EXPAND_SZ || type == REG_BINARY || type == REG_MULTI_SZ) {
 				ret = read_string(*key_, name, size);
 			}
@@ -117,7 +117,7 @@ uint64_t regkey::int_value(std::wstring const& name) const
 	if (key_) {
 		DWORD type{};
 		DWORD size{};
-		if (RegQueryValueEx(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS) {
+		if (RegQueryValueExW(*key_, name.c_str(), nullptr, &type, nullptr, &size) == ERROR_SUCCESS) {
 			if (type == REG_SZ || type == REG_EXPAND_SZ || type == REG_BINARY || type == REG_MULTI_SZ) {
 				ret = fz::to_integral<uint64_t>(read_string(*key_, name, size));
 			}

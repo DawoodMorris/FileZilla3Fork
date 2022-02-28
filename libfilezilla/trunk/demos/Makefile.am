@@ -1,4 +1,4 @@
-noinst_PROGRAMS = timer_fizzbuzz process events list
+noinst_PROGRAMS = timer_fizzbuzz process events list https
 
 timer_fizzbuzz_SOURCES = timer_fizzbuzz.cpp
 
@@ -54,6 +54,19 @@ list_LDADD = ../lib/libfilezilla.la
 list_LDADD += $(libdeps)
 
 list_DEPENDENCIES = ../lib/libfilezilla.la
+
+https_SOURCES = https.cpp
+
+https_CPPFLAGS = $(AM_CPPFLAGS)
+https_CPPFLAGS += -I$(top_srcdir)/lib
+
+https_LDFLAGS = $(AM_LDFLAGS)
+https_LDFLAGS += -no-install
+
+https_LDADD = ../lib/libfilezilla.la
+https_LDADD += $(libdeps)
+
+https_DEPENDENCIES = ../lib/libfilezilla.la
 
 if !FZ_WINDOWS
 noinst_PROGRAMS += impersonation

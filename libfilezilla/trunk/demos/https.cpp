@@ -34,7 +34,7 @@ public:
 	    , trust_store_(pool_)
 	{
 		s_ = std::make_unique<fz::socket>(pool_, this);
-		int res = s_->connect(host, 443);
+		int res = s_->connect(fz::to_native(host), 443);
 		if (res) {
 			log_.log(fz::logmsg::error, "Connect failed with %s", fz::socket_error_description(res));
 			event_loop_.stop();
@@ -42,7 +42,7 @@ public:
 		}
 
 		tls_ = std::make_unique<fz::tls_layer>(event_loop_, this, *s_, &trust_store_, log_);
-		if (!tls_->client_handshake(nullptr, {}, host)) {
+		if (!tls_->client_handshake(nullptr, {}, fz::to_native(host))) {
 			log_.log(fz::logmsg::error, "Could not start handshake");
 			event_loop_.stop();
 			return;

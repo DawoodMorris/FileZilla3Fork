@@ -20,7 +20,7 @@ struct logger : public fz::logger_interface
 	}
 
 	virtual void do_log(fz::logmsg::type t, std::wstring && msg) {
-		std::cerr << "Log: " << int(t) << " " << fz::to_native(msg) << "\n";
+		std::cerr << "Log: " << int(t) << " " << fz::to_string(msg) << "\n";
 	}
 };
 }

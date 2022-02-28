@@ -1,6 +1,5 @@
-#include <libfilezilla/glue/registry.hpp>
-
-#include <libfilezilla/string.hpp>
+#include "../libfilezilla/glue/registry.hpp"
+#include "../libfilezilla/string.hpp"
 
 #include <limits>
 

@@ -149,7 +149,6 @@ private:
 
 	template <typename T>
 	T const& assume_strings_are_utf8(T const& arg) {
-		abort();
 		return arg;
 	}
 };

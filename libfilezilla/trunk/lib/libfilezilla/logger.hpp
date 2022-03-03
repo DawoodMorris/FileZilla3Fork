@@ -32,9 +32,10 @@ namespace logmsg
 		debug_verbose = 1ull << 6,
 		debug_debug   = 1ull << 7,
 
-
-		private1     = 1ull << 32,
-		private32    = 1ull << 63
+		/// The types in the range custom1 to custom32 are free to use
+		/// by programs using libfilezilla for their own use
+		custom1     = 1ull << 32,
+		custom32    = 1ull << 63
 	};
 }
 
@@ -59,12 +60,30 @@ public:
 	/// The one thing you need to override
 	virtual void do_log(logmsg::type t, std::wstring && msg) = 0;
 
-	/// The \arg fmt argument is a format string suitable for fz::sprintf
+	/**
+	 * The \arg fmt argument is a format string suitable for fz::sprintf
+	 *
+	 * Assumes that all narrow string arguments are in the locale's current encoding.
+	 */
 	template<typename String, typename...Args>
 	void log(logmsg::type t, String&& fmt, Args&& ...args)
 	{
 		if (should_log(t)) {
-			std::wstring formatted = fz::to_wstring(fz::sprintf(std::forward<String>(fmt), std::forward<Args>(args)...));
+			std::wstring formatted = fz::sprintf(fz::to_wstring(std::forward<String>(fmt)), args...);
+			do_log(t, std::move(formatted));
+		}
+	}
+
+	/**
+	 * The \arg fmt argument is a format string suitable for fz::sprintf
+	 *
+	 * Assumes that all narrow string arguments, excluding the format string, are in UTF-8
+	 */
+	template<typename String, typename...Args>
+	void log_u(logmsg::type t, String&& fmt, Args const& ...args)
+	{
+		if (should_log(t)) {
+			std::wstring formatted = fz::sprintf(fz::to_wstring(std::forward<String>(fmt)), assume_strings_are_utf8(args)...);
 			do_log(t, std::move(formatted));
 		}
 	}
@@ -116,8 +135,24 @@ public:
 
 protected:
 	std::atomic<uint64_t> level_{logmsg::status | logmsg::error | logmsg::command | logmsg::reply};
+
+private:
+	std::wstring assume_strings_are_utf8(std::string_view const& arg) {
+		return fz::to_wstring_from_utf8(arg);
+	}
+	std::wstring assume_strings_are_utf8(std::string const& arg) {
+		return fz::to_wstring_from_utf8(arg);
+	}
+	std::wstring assume_strings_are_utf8(char const* arg) {
+		return fz::to_wstring_from_utf8(arg);
+	}
+
+	template <typename T>
+	T const& assume_strings_are_utf8(T const& arg) {
+		abort();
+		return arg;
+	}
 };
 }
 
 #endif
-

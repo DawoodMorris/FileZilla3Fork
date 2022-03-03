@@ -440,7 +440,8 @@ OutString do_sprintf(InString const& fmt, Args&&... args)
 * \li precision is ignored
 * \li Supported types: d, i, u, s, x, X, p
 *
-* For string arguments, mixing char*, wchar_t*, std::string and std::wstring is allowed.
+* For string arguments, mixing char*, wchar_t*, std::string and std::wstring is allowed. Converstion
+* to/from narrow strings is using the locale's encoding.
 *
 * Asserts if unsupported types are passed or if the types don't match the arguments. Fails gracefully with NDEBUG.
 *

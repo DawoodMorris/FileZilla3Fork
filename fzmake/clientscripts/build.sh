@@ -4,6 +4,8 @@ shopt -s nullglob
 
 export PREFIX="$1"
 export TARGET="$2"
+export FTARGET="${TARGET##*/}"
+
 CHROOTED="$3"
 
 export SCRIPTS="$PREFIX/clientscripts"
@@ -50,29 +52,36 @@ if ! [ -d "$PREFIX" ]; then
 fi
 
 # Adding $TARGET's prefix
+unset TARGET_PREFIX
 if [ ! -z "$HOME" ]; then
-  if [ -d "$HOME/prefix-$TARGET" ]; then
+  if [ -d "$HOME/$TARGET" ]; then
+    export TARGET_PREFIX="$HOME/$TARGET"
+  elif [ -d "$HOME/prefix-$TARGET" ]; then
+    export TARGET_PREFIX="$HOME/prefix-$TARGET"
+  elif [ -d "$HOME/prefix/$TARGET" ]; then
+    export TARGET_PREFIX="$HOME/prefix/$TARGET"
+  fi
 
-    echo "Found target specific prefix: \$HOME/prefix-$TARGET"
-
-    if [ -f "$HOME/prefix-$TARGET/SCHROOT" ]; then
+  if [ ! -z "TARGET_PREFIX" ]; then
+    echo "Found target specific prefix for $TARGET"
+    if [ -f "$TARGET_PREFIX/SCHROOT" ]; then
       if [ -z "$CHROOTED" ]; then
         echo "Changing root directory"
-        schroot -c "`cat \"$HOME/prefix-$TARGET/SCHROOT\"`" $0 "$PREFIX" "$TARGET" 1
+        schroot -c "`cat \"$TARGET_PREFIX/SCHROOT\"`" $0 "$PREFIX" "$TARGET" 1
         echo "Returned from chroot"
         exit $?
       fi
     fi
 
-    if [ -x "$HOME/prefix-$TARGET/profile" ]; then
-      . "$HOME/prefix-$TARGET/profile"
+    if [ -x "$TARGET_PREFIX/profile" ]; then
+      . "$TARGET_PREFIX/profile"
     fi
 
-    safe_prepend PATH "$HOME/prefix-$TARGET/bin" ':'
-    safe_prepend CPPFLAGS "-I$HOME/prefix-$TARGET/include" ' '
-    safe_prepend LDFLAGS "-L$HOME/prefix-$TARGET/lib" ' '
-    safe_prepend LD_LIBRARY_PATH "$HOME/prefix-$TARGET/lib" ':'
-    safe_prepend PKG_CONFIG_PATH "$HOME/prefix-$TARGET/lib/pkgconfig" ':'
+    safe_prepend PATH "$TARGET_PREFIX/bin" ':'
+    safe_prepend CPPFLAGS "-I$TARGET_PREFIX/include" ' '
+    safe_prepend LDFLAGS "-L$TARGET_PREFIX/lib" ' '
+    safe_prepend LD_LIBRARY_PATH "$TARGET_PREFIX/lib" ':'
+    safe_prepend PKG_CONFIG_PATH "$TARGET_PREFIX/lib/pkgconfig" ':'
   fi
 fi
 
@@ -94,7 +103,7 @@ rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR"
 
 echo "Making target $TARGET"
-$SCRIPTS/target.sh $TARGET || exit 1
+$SCRIPTS/target.sh || exit 1
 
 echo "Making tarball of output files"
 cd "$OUTPUTDIR"

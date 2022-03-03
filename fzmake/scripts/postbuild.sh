@@ -14,7 +14,7 @@ postbuild()
 
     if ! [ -x "$script" ]; then
       echo "$script not found or not executable"
-      continue
+      return 1
     fi
 
     . "$script"

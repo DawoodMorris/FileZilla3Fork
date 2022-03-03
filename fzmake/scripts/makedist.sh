@@ -8,16 +8,24 @@ makedist_package()
   mkdir -p "$WORKDIR/dist/$1"
 
   cd "$WORKDIR/dist/$1"
-  ../../source/$1/configure --enable-localesonly >> $LOG 2>&1 || return 1
+  ../../source/$1/configure $2 >> $LOG 2>&1 || return 1
   make dist >> $LOG 2>&1 || return 1
 
-  cp `find *.tar.bz2` "$OUTPUTDIR/$2" >> $LOG 2>&1 || return 1
+  cp `find *.tar.bz2` "$OUTPUTDIR/$3" >> $LOG 2>&1 || return 1
 
   return 0
 }
 
 makedist()
 {
-  makedist_package lfz libfilezilla-src.tar.bz2 || return 1
-  makedist_package FileZilla3 FileZilla3-src.tar.bz2 || return 1
+  resetPackages || return 1
+
+  while getPackage; do
+    if packageHasFlag "dist"; then
+      FLAGARG="${FLAGARG:---enable-localesonly}"
+      makedist_package "${PACKAGE}" $FLAGARG "${PACKAGE}_snapshot_${SHORTDATE}_src.tar.bz2" || return 1
+    fi
+  done
+
+  return 0
 }

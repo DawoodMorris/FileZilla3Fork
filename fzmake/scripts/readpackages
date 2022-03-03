@@ -12,7 +12,7 @@ printpackage()
   if [ "$PACKAGE" != "$PACKAGE_REPO" ]; then
     echo "  Package repository: $PACKAGE_REPO"
   fi
-  echo "  Package flags: $PACKAGE_FLAGS"
+  echo "  Package configure flags: $PACKAGE_CONFIGURE_FLAGS"
 }
 
 resetPackages()
@@ -22,6 +22,28 @@ resetPackages()
     logprint "Package file does not exist"
     return 1
   fi
+}
+
+packageHasFlag()
+{
+  local SEARCHFLAG="$1"
+
+  local FLAGS="${PACKAGE_FLAGS},"
+  while [ -n "$FLAGS" ]; do
+    local FLAG="${FLAGS%%,*}"
+    FLAGS="${FLAGS#*,}"
+    if echo $FLAG | grep "=" > /dev/null 2>&1; then
+      export FLAGARG=${FLAG#*=}
+    else
+      export FLAGARG=""
+    fi
+    FLAG=${FLAG%%=*}
+    if [ "$SEARCHFLAG" = "$FLAG" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 getPackage()
@@ -36,6 +58,7 @@ getPackage()
 
   export PACKAGE=
   export PACKAGE_FLAGS=
+  export PACKAGE_CONFIGURE_FLAGS=
   export PACKAGE_REPO=
   export PACKAGE_TYPE=
 
@@ -55,10 +78,13 @@ getPackage()
       fi
       export PACKAGE="${REPLY%/*}"
       export PACKAGE_REPO="${REPLY#*/}"
-    elif [ -z "$PACKAGE_FLAGS" ]; then
+
+      <&4 read -r REPLY
       export PACKAGE_FLAGS="$REPLY"
-    elif echo "$PACKAGE_FLAGS" | grep '\\$' 2>&1 > /dev/null; then
-      export PACKAGE_FLAGS="${PACKAGE_FLAGS%*\\} $REPLY"
+    elif [ -z "$PACKAGE_CONFIGURE_FLAGS" ]; then
+      export PACKAGE_CONFIGURE_FLAGS="$REPLY"
+    elif echo "$PACKAGE_CONFIGURE_FLAGS" | grep '\\$' 2>&1 > /dev/null; then
+      export PACKAGE_CONFIGURE_FLAGS="${PACKAGE_CONFIGURE_FLAGS%*\\} $REPLY"
     else
       echo "Unexpected line: $REPLY"
       return 1

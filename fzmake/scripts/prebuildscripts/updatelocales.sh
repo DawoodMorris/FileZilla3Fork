@@ -102,6 +102,6 @@ EOF
   mv $WWWLOCALES/stats~ $WWWLOCALES/stats
 }
 
-updatelocales lfz lfz libfilezilla || return 1
+updatelocales libfilezilla lfz libfilezilla || return 1
 updatelocales FileZilla3 fz filezilla || return 1
 

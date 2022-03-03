@@ -8,11 +8,11 @@ failure()
   ENDSECONDS=`date '+%s'`
   local span=$((ENDSECONDS - STARTSECONDS))
   echo "Build time: $span seconds" >> "$TARGETLOG"
-  touch "$OUTPUTDIR/$TARGET/failed"
-  rm -f "$OUTPUTDIR/$TARGET/running"
-  rm -f "$OUTPUTDIR/$TARGET/pending"
-  rm -f "$WORKDIR/output-$TARGET.tar"
-  rm -rf "$WORKDIR/$TARGET"
+  touch "$OUTPUTDIR/$FTARGET/failed"
+  rm -f "$OUTPUTDIR/$FTARGET/running"
+  rm -f "$OUTPUTDIR/$FTARGET/pending"
+  rm -f "$WORKDIR/output-$FTARGET.tar"
+  rm -rf "$WORKDIR/$FTARGET"
   return 1
 }
 
@@ -20,20 +20,21 @@ all_failure()
 {
   logprint "$TARGETS: Failed"
   for TARGET in $TARGETS; do
-    TARGETLOG="$OUTPUTDIR/$TARGET/build.log"
+    FTARGET="${TARGET##*/}"
+    TARGETLOG="$OUTPUTDIR/$FTARGET/build.log"
     echo -e "FileZilla 3 build log" >> $TARGETLOG
     echo -e "---------------------\n" >> $TARGETLOG
-    echo -e "Target: $TARGET" >> $TARGETLOG
+    echo -e "Target: $FTARGET" >> $TARGETLOG
     START=`date "+%Y-%m-%d %H:%M:%S"`
     echo -e "Build started: $START\n" >> $TARGETLOG
 
     echo -e "Failed to upload required files" >> $TARGETLOG
 
-    touch "$OUTPUTDIR/$TARGET/failed"
-    rm -f "$OUTPUTDIR/$TARGET/running"
-    rm -f "$OUTPUTDIR/$TARGET/pending"
+    touch "$OUTPUTDIR/$FTARGET/failed"
+    rm -f "$OUTPUTDIR/$FTARGET/running"
+    rm -f "$OUTPUTDIR/$FTARGET/pending"
     rm -f "$WORKDIR/output-*.tar"
-    rm -rf "$WORKDIR/$TARGET"
+    rm -rf "$WORKDIR/$FTARGET"
   done
 
   spawn_cleanup
@@ -82,11 +83,16 @@ buildspawn()
   logprint "$TARGETS: Unpacking clientscripts"
   filter $SSH -i "$KEYFILE" -p $PORT "$HOST" ". /etc/profile; cd $HOSTPREFIX; rm -rf clientscripts; tar -xjf clientscripts.tar.bz2;" 2>&1 || all_failure || return 1
 
+  if [ -f "$CONFDIR/clientpostbuild" ]; then
+    filter $SCP -i "$KEYFILE" -P $PORT "$CONFDIR/clientpostbuild" "$HOST:$HOSTPREFIX/clientscripts/postbuild/postbuild" || all_failure || return 1
+  fi
+
   logprint "$TARGETS: Building targets, check target specific logs for details"
 
   for i in $TARGETS; do
     export TARGET=$i
-    export TARGETLOG="$OUTPUTDIR/$i/build.log"
+    export FTARGET="${TARGET##*/}"
+    export TARGETLOG="$OUTPUTDIR/$FTARGET/build.log"
     targetlogprint "FileZilla 3 build log"
     targetlogprint "---------------------\n"
     targetlogprint "Target: $TARGET";
@@ -94,14 +100,14 @@ buildspawn()
     export STARTSECONDS=`date '+%s'`
     targetlogprint "Build started: $START\n"
 
-    touch "$OUTPUTDIR/$i/running"
-    rm "$OUTPUTDIR/$i/pending"
+    touch "$OUTPUTDIR/$FTARGET/running"
+    rm "$OUTPUTDIR/$FTARGET/pending"
 
     targetlogprint "Invoking remote build script"
     if [ -z "$SUBHOST" ]; then
-      filter $SSH -i "$KEYFILE" -p $PORT "$HOST" ". /etc/profile; cd $HOSTPREFIX; clientscripts/build.sh \"$HOSTPREFIX\" \"$i\"" >> $TARGETLOG || failure || continue
+      filter $SSH -i "$KEYFILE" -p $PORT "$HOST" ". /etc/profile; cd $HOSTPREFIX; clientscripts/build.sh \"$HOSTPREFIX\" \"$TARGET\"" >> $TARGETLOG || failure || continue
     else
-      filter $SSH -i "$KEYFILE" -p $PORT "$HOST" "ssh $SUBHOST '. /etc/profile; cd $HOSTPREFIX; clientscripts/build.sh \"$HOSTPREFIX\" \"$i\"'" >> $TARGETLOG || failure || continue
+      filter $SSH -i "$KEYFILE" -p $PORT "$HOST" "ssh $SUBHOST '. /etc/profile; cd $HOSTPREFIX; clientscripts/build.sh \"$HOSTPREFIX\" \"$TARGET\"'" >> $TARGETLOG || failure || continue
     fi
 
     BUILDENDSECONDS=`date '+%s'`
@@ -109,25 +115,25 @@ buildspawn()
     echo "Build time: $span seconds" >> "$TARGETLOG"
 
     targetlogprint "Downloading built files"
-    filter $SCP -i "$KEYFILE" -P $PORT "$HOST:$HOSTPREFIX/output.tar" "$WORKDIR/output-$TARGET.tar" >> $TARGETLOG || failure || continue
+    filter $SCP -i "$KEYFILE" -P $PORT "$HOST:$HOSTPREFIX/output.tar" "$WORKDIR/output-$FTARGET.tar" >> $TARGETLOG || failure || continue
 
     cd "$WORKDIR"
-    tar -xf "$WORKDIR/output-$TARGET.tar" >> $TARGETLOG 2>&1 || failure || continue
+    tar -xf "$WORKDIR/output-$FTARGET.tar" >> $TARGETLOG 2>&1 || failure || continue
 
-    if [ ! -d "$TARGET" ]; then
+    if [ ! -d "$FTARGET" ]; then
       targetlogprint "Downloaded file does not contain target specific files"
       failure || continue
     fi
 
-    cd "$TARGET"
-    cp * "$OUTPUTDIR/$TARGET"
+    cd "$FTARGET"
+    cp * "$OUTPUTDIR/$FTARGET"
 
     cd "$WORKDIR"
-    rm -r "$TARGET"
-    rm "output-$TARGET.tar";
+    rm -r "$FTARGET"
+    rm "output-$FTARGET.tar";
 
-    touch "$OUTPUTDIR/$i/successful"
-    rm "$OUTPUTDIR/$i/running"
+    touch "$OUTPUTDIR/$FTARGET/successful"
+    rm "$OUTPUTDIR/$FTARGET/running"
 
     targetlogprint "Build successful"
 

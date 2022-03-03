@@ -3,8 +3,8 @@
 PACKAGES_FILE="$SCRIPTS/packages"
 . "$SCRIPTS/readpackages"
 . "$SCRIPTS/util.sh"
-
-export TARGET=$1
+. "$SCRIPTS/readfile.sh"
+. "$SCRIPTS/postbuild.sh"
 
 makepackage()
 {
@@ -45,16 +45,20 @@ makepackage()
       exit 1
     fi
   fi
+
+  mkdir -p "$WORKDIR/prefix/$PACKAGE/bin"
+  mkdir -p "$WORKDIR/prefix/$PACKAGE/lib"
   nice "$MAKE" install || return 1
 
   if [ -z "$NOINST" ]; then
     echo "Running postbuild script"
-    $SCRIPTS/postbuild.sh "$TARGET" "$PACKAGE" || return 1
+
+    clientpostbuild "$PACKAGE" || return 1
   fi
 }
 
 while getPackage; do
-  makepackage $PACKAGE "$PACKAGE_FLAGS" || exit 1
+  makepackage $PACKAGE "$PACKAGE_CONFIGURE_FLAGS" || exit 1
 
   PATH="$WORKDIR/prefix/$PACKAGE/bin:$PATH"
   LD_LIBRARY_PATH="$WORKDIR/prefix/$PACKAGE/lib:$LD_LIBRARY_PATH"

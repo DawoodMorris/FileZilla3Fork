@@ -16,6 +16,7 @@ namespace fz {
 
 class thread_pool;
 
+/// \private
 class async_task_impl;
 
 /** \brief Handle for asynchronous tasks
@@ -70,14 +71,18 @@ public:
 
 	/// Spawns a new asynchronous task.
 	async_task spawn(std::function<void()> const& f);
+	async_task spawn(std::function<void()> && f);
 
 private:
+	pooled_thread_impl* get_or_create_thread();
+
 	friend class async_task;
 	friend class pooled_thread_impl;
 
 	std::vector<pooled_thread_impl*> threads_;
 	std::vector<pooled_thread_impl*> idle_;
 	mutex m_{false};
+	bool quit_{};
 };
 
 }

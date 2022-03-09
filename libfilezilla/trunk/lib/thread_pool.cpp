@@ -134,14 +134,8 @@ thread_pool::~thread_pool()
 	}
 }
 
-async_task thread_pool::spawn(std::function<void()> const& f)
+pooled_thread_impl* thread_pool::get_or_create_thread()
 {
-	if (!f) {
-		return {};
-	}
-
-	scoped_lock l(m_);
-
 	if (quit_) {
 		return {};
 	}
@@ -159,12 +153,50 @@ async_task thread_pool::spawn(std::function<void()> const& f)
 		t = idle_.back();
 		idle_.pop_back();
 	}
+	return t;
+}
+
+async_task thread_pool::spawn(std::function<void()> const& f)
+{
+	if (!f) {
+		return {};
+	}
+
+	scoped_lock l(m_);
+
+	auto *t = get_or_create_thread();
+	if (!t) {
+		return {};
+	}
 
 	async_task ret;
 	ret.impl_ = new async_task_impl;
 	ret.impl_->thread_ = t;
 	t->task_ = ret.impl_;
 	t->f_ = f;
+	t->thread_cond_.signal(l);
+
+	return ret;
+}
+
+async_task thread_pool::spawn(std::function<void()> && f)
+{
+	if (!f) {
+		return {};
+	}
+
+	scoped_lock l(m_);
+
+	auto *t = get_or_create_thread();
+	if (!t) {
+		return {};
+	}
+
+	async_task ret;
+	ret.impl_ = new async_task_impl;
+	ret.impl_->thread_ = t;
+	t->task_ = ret.impl_;
+	t->f_ = std::move(f);
 	t->thread_cond_.signal(l);
 
 	return ret;

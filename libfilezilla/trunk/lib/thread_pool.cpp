@@ -41,7 +41,7 @@ public:
 				l.lock();
 				task_ = nullptr;
 				f_ = std::function<void()>();
-				pool_.idle_.push_back(this);
+				pool_.idle_.emplace_back(this);
 				if (task_waiting_) {
 					task_waiting_ = false;
 					task_cond_.signal(l);
@@ -122,6 +122,7 @@ thread_pool::~thread_pool()
 	std::vector<pooled_thread_impl*> threads;
 	{
 		scoped_lock l(m_);
+		quit_ = true;
 		for (auto thread : threads_) {
 			thread->quit(l);
 		}
@@ -135,31 +136,36 @@ thread_pool::~thread_pool()
 
 async_task thread_pool::spawn(std::function<void()> const& f)
 {
-	async_task ret;
-
-	if (f) {
-		scoped_lock l(m_);
-
-		pooled_thread_impl *t{};
-		if (idle_.empty()) {
-			t = new pooled_thread_impl(*this);
-			if (!t->run()) {
-				delete t;
-				return ret;
-			}
-			threads_.push_back(t);
-		}
-		else {
-			t = idle_.back();
-			idle_.pop_back();
-		}
-
-		ret.impl_ = new async_task_impl;
-		ret.impl_->thread_ = t;
-		t->task_ = ret.impl_;
-		t->f_ = f;
-		t->thread_cond_.signal(l);
+	if (!f) {
+		return {};
 	}
+
+	scoped_lock l(m_);
+
+	if (quit_) {
+		return {};
+	}
+
+	pooled_thread_impl *t{};
+	if (idle_.empty()) {
+		t = new pooled_thread_impl(*this);
+		if (!t->run()) {
+			delete t;
+			return {};
+		}
+		threads_.emplace_back(t);
+	}
+	else {
+		t = idle_.back();
+		idle_.pop_back();
+	}
+
+	async_task ret;
+	ret.impl_ = new async_task_impl;
+	ret.impl_->thread_ = t;
+	t->task_ = ret.impl_;
+	t->f_ = f;
+	t->thread_cond_.signal(l);
 
 	return ret;
 }

@@ -39,6 +39,27 @@ fi
 
 if ! test "$localesonly" = "yes"; then
 
+# Check if we're on Windows
+if echo $host_os | grep 'cygwin\|mingw\|^msys$' > /dev/null 2>&1; then
+  windows=1
+else
+  windows=0
+fi
+
+# Check if we're on Mac
+if test "$host_vendor" = "apple"; then
+  mac=1
+else
+  mac=0
+fi
+
+# If neither, we're Unix(-like)
+if test "$mac" = "0" && test "$windows" = "0"; then
+  unix=1
+else
+  unix=0
+fi
+
 if test "X$GCC" = Xyes; then
   AX_APPEND_FLAG(-Wall, CFLAGS)
   AX_APPEND_FLAG(-g, CFLAGS)
@@ -75,14 +96,15 @@ CHECK_THREAD_LOCAL
 
 AC_CHECK_DECLS([CLOCK_MONOTONIC], [], [], [[#include <time.h>]])
 
+if test "$windows" = "0"; then
+  AC_CHECK_FUNC(poll, [], [
+    AC_MSG_ERROR([Please update to an operating system supporitng poll().])
+  ])
+  AC_CHECK_FUNCS(posix_fadvise pipe2 accept4)
 
-# Some platforms, e.g. OS X, lack posix_fadvise
-AC_CHECK_FUNCS(posix_fadvise)
-
-AC_CHECK_FUNCS(poll pipe2 accept4)
-
-# eventfd is preferred over selfpipe, half the descriptors after all.
-CHECK_EVENTFD
+  # eventfd is preferred over selfpipe, half the descriptors after all.
+  CHECK_EVENTFD
+fi
 
 # Some platforms have no d_type entry in their dirent structure
 gl_CHECK_TYPE_STRUCT_DIRENT_D_TYPE
@@ -94,27 +116,6 @@ CHECK_INVERSE_GMTIME
 CHECK_CLOCK_GETTIME
 
 AC_CHECK_DECLS([pthread_condattr_setclock], [], [], [[#include <pthread.h>]])
-
-# Check if we're on Windows
-if echo $host_os | grep 'cygwin\|mingw\|^msys$' > /dev/null 2>&1; then
-  windows=1
-else
-  windows=0
-fi
-
-# Check if we're on Mac
-if test "$host_vendor" = "apple"; then
-  mac=1
-else
-  mac=0
-fi
-
-# If neither, we're Unix(-like)
-if test "$mac" = "0" && test "$windows" = "0"; then
-  unix=1
-else
-  unix=0
-fi
 
 if test "$windows" = "1"; then
   libdeps="-lws2_32"

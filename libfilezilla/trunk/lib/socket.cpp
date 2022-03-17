@@ -438,25 +438,12 @@ public:
 			if (event_fd_ == -1) {
 				return errno;
 			}
-#ifndef HAVE_POLL
-			if (event_fd_ >= FD_SETSIZE) {
-				destroy_sync();
-				return EMFILE;
-			}
-#endif
 		}
 #else
 		if (pipe_[0] == -1) {
 			if (!create_pipe(pipe_)) {
 				return errno;
 			}
-
-#ifndef HAVE_POLL
-			if (pipe_[0] >= FD_SETSIZE) {
-				destroy_sync();
-				return EMFILE;
-			}
-#endif
 		}
 #endif
 		return 0;
@@ -545,7 +532,7 @@ public:
 		return 0;
 	}
 
-	// Cancels select or idle wait
+	// Cancels poll or idle wait
 	void wakeup_thread()
 	{
 		scoped_lock l(mutex_);
@@ -605,14 +592,6 @@ protected:
 			set_cloexec(fd);
 #endif
 		}
-
-#if !defined(FZ_WINDOWS) && !defined(HAVE_POLL)
-		if (fd >= FD_SETSIZE) {
-			close(fd);
-			errno = EMFILE;
-			return -1;
-		}
-#endif
 
 		if (fd != -1) {
 #if defined(SO_NOSIGPIPE) && !defined(MSG_NOSIGNAL)
@@ -893,7 +872,7 @@ protected:
 			if (triggered_ || !waiting_) {
 				return true;
 			}
-#elif defined(HAVE_POLL)
+#else
 			pollfd fds[2]{};
 #ifdef HAVE_EVENTFD
 			fds[0].fd = event_fd_;
@@ -973,103 +952,6 @@ protected:
 				}
 				if (waiting_ & WAIT_WRITE) {
 					if (revents & (POLLOUT|POLLERR|POLLHUP)) {
-						triggered_ |= WAIT_WRITE;
-						waiting_ &= ~WAIT_WRITE;
-					}
-				}
-			}
-
-			if (triggered_ || !waiting_) {
-				return true;
-			}
-#else
-			fd_set readfds;
-			fd_set writefds;
-			FD_ZERO(&readfds);
-			FD_ZERO(&writefds);
-
-#ifdef HAVE_EVENTFD
-			FD_SET(event_fd_, &readfds);
-#else
-			FD_SET(pipe_[0], &readfds);
-#endif
-
-			if (waiting_ & (WAIT_READ | WAIT_ACCEPT)) {
-				FD_SET(socket_->fd_, &readfds);
-			}
-			if (waiting_ & (WAIT_WRITE | WAIT_CONNECT)) {
-				FD_SET(socket_->fd_, &writefds);
-			}
-
-#ifdef HAVE_EVENTFD
-			int maxfd = std::max(event_fd_, socket_->fd_) + 1;
-#else
-			int maxfd = std::max(pipe_[0], socket_->fd_) + 1;
-#endif
-
-			l.unlock();
-
-			int res = select(maxfd, &readfds, &writefds, nullptr, nullptr);
-
-			l.lock();
-
-#ifdef HAVE_EVENTFD
-			if (res > 0 && FD_ISSET(event_fd_, &readfds)) {
-				char buffer[8];
-				int damn_spurious_warning = read(event_fd_, buffer, 8);
-#else
-			if (res > 0 && FD_ISSET(pipe_[0], &readfds)) {
-				char buffer[100];
-				int damn_spurious_warning = read(pipe_[0], buffer, 100);
-#endif
-				(void)damn_spurious_warning; // We do not care about return value and this is definitely correct!
-			}
-
-			if (quit_ || !socket_ || socket_->fd_ == -1) {
-				return false;
-			}
-
-			if (!res) {
-				continue;
-			}
-			if (res == -1) {
-				res = errno;
-
-				if (res == EINTR) {
-					continue;
-				}
-
-				return false;
-			}
-
-			if (waiting_ & WAIT_CONNECT) {
-				if (FD_ISSET(socket_->fd_, &writefds)) {
-					int error;
-					socklen_t len = sizeof(error);
-					int getsockopt_res = getsockopt(socket_->fd_, SOL_SOCKET, SO_ERROR, &error, &len);
-					if (getsockopt_res) {
-						error = errno;
-					}
-					triggered_ |= WAIT_CONNECT;
-					triggered_errors_[0] = error;
-					waiting_ &= ~WAIT_CONNECT;
-				}
-			}
-			else if (waiting_ & WAIT_ACCEPT) {
-				if (FD_ISSET(socket_->fd_, &readfds)) {
-					triggered_ |= WAIT_ACCEPT;
-					waiting_ &= ~WAIT_ACCEPT;
-				}
-			}
-			else {
-				if (waiting_ & WAIT_READ) {
-					if (FD_ISSET(socket_->fd_, &readfds)) {
-						triggered_ |= WAIT_READ;
-						waiting_ &= ~WAIT_READ;
-					}
-				}
-				if (waiting_ & WAIT_WRITE) {
-					if (FD_ISSET(socket_->fd_, &writefds)) {
 						triggered_ |= WAIT_WRITE;
 						waiting_ &= ~WAIT_WRITE;
 					}
@@ -1194,7 +1076,7 @@ protected:
 #elif defined(HAVE_EVENTFD)
 	int event_fd_{-1};
 #else
-	// A pipe is used to unblock select
+	// A pipe is used to unblock poll
 	int pipe_[2]{-1, -1};
 #endif
 
@@ -1620,14 +1502,6 @@ socket_descriptor listen_socket::fast_accept(int &error)
 		if (fd == -1) {
 			error = errno;
 		}
-
-#if !defined(FZ_WINDOWS) && !defined(HAVE_POLL)
-		if (fd >= FD_SETSIZE) {
-			::close(fd);
-			error = EMFILE;
-			return socket_descriptor();
-		}
-#endif
 	}
 
 	if (fd != -1) {

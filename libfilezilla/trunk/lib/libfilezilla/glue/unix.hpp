@@ -64,6 +64,10 @@ int FZ_PUBLIC_SYMBOL send_fd(int socket, fz::buffer & buf, int fd, int & error);
  * fd is set to -1.
  */
 int FZ_PUBLIC_SYMBOL read_fd(int socket, fz::buffer & buf, int &fd, int & error);
+
+/// Returns 0 on success, errno otherwise
+int FZ_PUBLIC_SYMBOL set_nonblocking(int fd, bool non_blocking = true);
+
 }
 
 #else

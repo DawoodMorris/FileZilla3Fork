@@ -207,4 +207,24 @@ int read_fd(int socket, fz::buffer & buf, int & fd, int & error)
 	return res;
 }
 
+int set_nonblocking(int fd, bool non_blocking)
+{
+	int flags = fcntl(fd, F_GETFL);
+	if (flags == -1) {
+		return errno;
+	}
+	if (non_blocking) {
+		flags |= O_NONBLOCK;
+	}
+	else {
+		flags &= ~O_NONBLOCK;
+	}
+
+	int res = fcntl(fd, F_SETFL, flags);
+	if (res == -1) {
+		return errno;
+	}
+	return 0;
+}
+
 }

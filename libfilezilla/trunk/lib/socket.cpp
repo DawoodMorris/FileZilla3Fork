@@ -15,6 +15,7 @@
 #ifndef FZ_WINDOWS
   #include "libfilezilla/glue/unix.hpp"
   #include "libfilezilla/process.hpp"
+  #include "unix/poller.hpp"
 
   #define mutex mutex_override // Sadly on some platforms system headers include conflicting names
   #include <sys/types.h>
@@ -28,11 +29,7 @@
   #if !defined(MSG_NOSIGNAL) && !defined(SO_NOSIGPIPE)
 	#include <signal.h>
   #endif
-  #include <poll.h>
   #undef mutex
-  #if HAVE_EVENTFD
-	#include <sys/eventfd.h>
-  #endif
   #if HAVE_TCP_INFO
 	#include <atomic>
   #endif
@@ -257,10 +254,10 @@ int last_socket_error()
 }
 #endif
 
+#ifdef FZ_WINDOWS
 int set_nonblocking(socket::socket_t fd)
 {
 	// Set socket to non-blocking.
-#ifdef FZ_WINDOWS
 	unsigned long nonblock = 1;
 	int res = ioctlsocket(fd, FIONBIO, &nonblock);
 	if (!res) {
@@ -269,18 +266,8 @@ int set_nonblocking(socket::socket_t fd)
 	else {
 		return convert_msw_error_code(WSAGetLastError());
 	}
-#else
-	int flags = fcntl(fd, F_GETFL);
-	if (flags == -1) {
-		return errno;
-	}
-	int res = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-	if (res == -1) {
-		return errno;
-	}
-	return 0;
-#endif
 }
+#endif
 
 int do_set_flags(socket::socket_t fd, int flags, int flags_mask, duration const& keepalive_interval)
 {
@@ -432,19 +419,8 @@ public:
 		if (sync_event_ == WSA_INVALID_EVENT) {
 			return 1;
 		}
-#elif defined HAVE_EVENTFD
-		if (event_fd_ == -1) {
-			event_fd_ = eventfd(0, EFD_CLOEXEC|EFD_NONBLOCK);
-			if (event_fd_ == -1) {
-				return errno;
-			}
-		}
 #else
-		if (pipe_[0] == -1) {
-			if (!create_pipe(pipe_)) {
-				return errno;
-			}
-		}
+		return poller_.init();
 #endif
 		return 0;
 	}
@@ -455,20 +431,6 @@ public:
 #ifdef FZ_WINDOWS
 		if (sync_event_ != WSA_INVALID_EVENT) {
 			WSACloseEvent(sync_event_);
-		}
-#elif defined HAVE_EVENTFD
-		if (event_fd_ != -1) {
-			::close(event_fd_);
-			event_fd_ = -1;
-		}
-#else
-		if (pipe_[0] != -1) {
-			::close(pipe_[0]);
-			pipe_[0] = -1;
-		}
-		if (pipe_[1] != -1) {
-			::close(pipe_[1]);
-			pipe_[1] = -1;
 		}
 #endif
 	}
@@ -511,7 +473,6 @@ public:
 	{
 		if (thread_) {
 			scoped_lock l(mutex_);
-			assert(threadwait_);
 			waiting_ = 0;
 			wakeup_thread(l);
 			return 0;
@@ -539,34 +500,17 @@ public:
 		wakeup_thread(l);
 	}
 
-	void wakeup_thread(scoped_lock & l)
+	void wakeup_thread(scoped_lock &)
 	{
 		if (!thread_ || quit_) {
 			return;
 		}
 
-		if (threadwait_) {
-			threadwait_ = false;
-			condition_.signal(l);
-			return;
-		}
-
 #ifdef FZ_WINDOWS
-		WSASetEvent(sync_event_);
-#elif defined(HAVE_EVENTFD)
-		uint64_t tmp = 1;
 
-		int ret;
-		do {
-			ret = write(event_fd_, &tmp, 8);
-		} while (ret == -1 && errno == EINTR);
+		Event(sync_event_);
 #else
-		char tmp = 0;
-
-		int ret;
-		do {
-			ret = write(pipe_[1], &tmp, 1);
-		} while (ret == -1 && errno == EINTR);
+		poller_.interrupt();
 #endif
 	}
 
@@ -874,56 +818,26 @@ protected:
 			}
 #else
 			pollfd fds[2]{};
-#ifdef HAVE_EVENTFD
-			fds[0].fd = event_fd_;
-#else
-			fds[0].fd = pipe_[0];
-#endif
-			fds[0].events = POLLIN;
-			fds[1].fd = socket_->fd_;
-			fds[1].events = 0;
+			fds[0].fd = socket_->fd_;
+			fds[0].events = 0;
 
 			if (waiting_ & (WAIT_READ|WAIT_ACCEPT)) {
-				fds[1].events |= POLLIN;
+				fds[0].events |= POLLIN;
 			}
 			if (waiting_ & (WAIT_WRITE | WAIT_CONNECT)) {
-				fds[1].events |= POLLOUT;
+				fds[0].events |= POLLOUT;
 			}
-
-			l.unlock();
-
-			int res = poll(fds, 2, -1);
-
-			l.lock();
-
-			if (res > 0 && fds[0].revents) {
-				char buffer[100];
-#ifdef HAVE_EVENTFD
-				int damn_spurious_warning = read(event_fd_, buffer, 8);
-#else
-				int damn_spurious_warning = read(pipe_[0], buffer, 100);
-#endif
-				(void)damn_spurious_warning; // We do not care about return value and this is definitely correct!
-			}
+			bool res = poller_.wait(fds, 1, l);
 
 			if (quit_ || !socket_ || socket_->fd_ == -1) {
 				return false;
 			}
 
 			if (!res) {
-				continue;
-			}
-			if (res == -1) {
-				res = errno;
-
-				if (res == EINTR) {
-					continue;
-				}
-
 				return false;
 			}
 
-			int const revents = fds[1].revents;
+			int const revents = fds[0].revents;
 			if (waiting_ & WAIT_CONNECT) {
 				if (revents & (POLLOUT|POLLERR|POLLHUP)) {
 					int error;
@@ -992,8 +906,14 @@ protected:
 			return false;
 		}
 		while (!socket_ || (!waiting_ && host_.empty())) {
-			threadwait_ = true;
-			condition_.wait(l);
+
+#if FZ_WINDOWS
+			l.unlock();
+			WSAWaitForMultipleEvents(1, &sync_event_, false, WSA_INFINITE, false);
+			l.lock();
+#else
+			poller_.wait(l);
+#endif
 
 			if (quit_) {
 				return false;
@@ -1064,7 +984,6 @@ protected:
 	std::string bind_;
 
 	mutex mutex_;
-	condition condition_;
 
 	async_task thread_;
 
@@ -1073,11 +992,8 @@ protected:
 #ifdef FZ_WINDOWS
 	// We wait on this using WSAWaitForMultipleEvents
 	WSAEVENT sync_event_{WSA_INVALID_EVENT};
-#elif defined(HAVE_EVENTFD)
-	int event_fd_{-1};
 #else
-	// A pipe is used to unblock poll
-	int pipe_[2]{-1, -1};
+	poller poller_;
 #endif
 
 	// The socket events we are waiting for
@@ -1088,9 +1004,6 @@ protected:
 	int triggered_errors_[WAIT_EVENTCOUNT];
 
 	bool quit_{};
-
-	// Thread waits for instructions
-	bool threadwait_{};
 };
 
 socket_base::socket_base(thread_pool& pool, event_handler* evt_handler, socket_event_source* ev_source)

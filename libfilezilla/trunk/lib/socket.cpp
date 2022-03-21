@@ -507,8 +507,7 @@ public:
 		}
 
 #ifdef FZ_WINDOWS
-
-		Event(sync_event_);
+		WSASetEvent(sync_event_);
 #else
 		poller_.interrupt();
 #endif

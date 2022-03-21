@@ -96,7 +96,8 @@ dist_noinst_HEADERS = \
 	tls_layer_impl.hpp \
 	tls_system_trust_store_impl.hpp \
 	windows/dll.hpp \
-	windows/security_descriptor_builder.hpp
+	windows/security_descriptor_builder.hpp \
+	unix/poller.hpp
 
 if FZ_WINDOWS
 
@@ -120,7 +121,8 @@ libfilezilla_la_LDFLAGS += -Wl,windows/libfilezilla_rc.o
 else
 
 libfilezilla_la_SOURCES += \
-	glue/unix.cpp
+	glue/unix.cpp \
+	unix/poller.cpp
 
 nobase_include_HEADERS += \
 	libfilezilla/glue/unix.hpp

@@ -2,14 +2,13 @@
 #define LIBFILEZILLA_UNIX_POLLER_HEADER
 
 #include "../libfilezilla/libfilezilla.hpp"
+#include "../libfilezilla/mutex.hpp"
 
 #if !FZ_WINDOWS
 
 #include <poll.h>
 
 namespace fz {
-class scoped_lock;
-
 class poller final
 {
 public:
@@ -26,8 +25,13 @@ public:
 	// Must call locked
 	bool wait(scoped_lock & l)
 	{
-		struct pollfd fds[1]{};
-		return wait(fds, 0, l);
+		if (!signalled_) {
+			idle_wait_ = true;
+			cond_.wait(l);
+			signalled_ = false;
+			idle_wait_ = false;
+		}
+		return true;
 	}
 
 	// fds must be large enough to hold n+1 entries, but fds[n] must not be filled by caller
@@ -41,6 +45,10 @@ public:
 	// A pipe is used to unblock poll
 	int pipe_[2]{-1, -1};
 #endif
+
+	condition cond_;
+	bool signalled_{};
+	bool idle_wait_{};
 };
 }
 

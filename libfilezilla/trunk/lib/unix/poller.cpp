@@ -67,6 +67,7 @@ bool poller::wait(struct pollfd *fds, nfds_t n, scoped_lock & l)
 	} while (res == -1 && errno == EINTR);
 
 	l.lock();
+	signalled_ = false;
 
 	if (res > 0 && fds[n].revents) {
 		char buffer[100];
@@ -80,23 +81,29 @@ bool poller::wait(struct pollfd *fds, nfds_t n, scoped_lock & l)
 	return res > 0;
 }
 
-void poller::interrupt(scoped_lock &)
+void poller::interrupt(scoped_lock & l)
 {
+	signalled_ = true;
+	if (idle_wait_) {
+		cond_.signal(l);
+	}
+	else {
 #ifdef HAVE_EVENTFD
-	uint64_t tmp = 1;
+		uint64_t tmp = 1;
 
-	int ret;
-	do {
-		ret = write(event_fd_, &tmp, 8);
-	} while (ret == -1 && errno == EINTR);
+		int ret;
+		do {
+			ret = write(event_fd_, &tmp, 8);
+		} while (ret == -1 && errno == EINTR);
 #else
-	char tmp = 0;
+		char tmp = 0;
 
-	int ret;
-	do {
-		ret = write(pipe_[1], &tmp, 1);
-	} while (ret == -1 && errno == EINTR);
+		int ret;
+		do {
+			ret = write(pipe_[1], &tmp, 1);
+		} while (ret == -1 && errno == EINTR);
 #endif
+	}
 }
 
 }

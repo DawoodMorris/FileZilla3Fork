@@ -38,6 +38,7 @@ public:
 			idle_wait_ = true;
 			cond_.wait(l);
 			signalled_ = false;
+			idle_wait_ = false;
 		}
 		return true;
 	}

@@ -80,7 +80,7 @@ bool poller::wait(struct pollfd *fds, nfds_t n, scoped_lock & l)
 	return res > 0;
 }
 
-void poller::interrupt()
+void poller::interrupt(scoped_lock &)
 {
 #ifdef HAVE_EVENTFD
 	uint64_t tmp = 1;

@@ -98,7 +98,7 @@ private:
 				}
 				else {
 					if (w < 0) {
-						if (error == EWOULDBLOCK) {
+						if (error == EAGAIN) {
 							return;
 						}
 						log_.log(fz::logmsg::error, "Error writing: %", fz::socket_error_description(error));
@@ -123,7 +123,7 @@ private:
 					success_ = true;
 				}
 				else {
-					if (error == EWOULDBLOCK) {
+					if (error == EAGAIN) {
 						return;
 					}
 					log_.log(fz::logmsg::error, "Error reading: %s", fz::socket_error_description(error));

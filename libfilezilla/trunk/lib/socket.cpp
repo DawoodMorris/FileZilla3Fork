@@ -5,6 +5,8 @@
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <mstcpip.h>
+
+  #include "windows/poller.hpp"
 #endif
 
 #include "libfilezilla/socket.hpp"
@@ -412,27 +414,13 @@ public:
 
 	int create_sync()
 	{
-#ifdef FZ_WINDOWS
-		if (sync_event_ == WSA_INVALID_EVENT) {
-			sync_event_ = WSACreateEvent();
-		}
-		if (sync_event_ == WSA_INVALID_EVENT) {
-			return 1;
-		}
-#else
 		return poller_.init();
-#endif
-		return 0;
 	}
 
 
 	void destroy_sync()
 	{
-#ifdef FZ_WINDOWS
-		if (sync_event_ != WSA_INVALID_EVENT) {
-			WSACloseEvent(sync_event_);
-		}
-#endif
+		// TODO
 	}
 
 	void set_socket(socket_base* pSocket)
@@ -500,17 +488,13 @@ public:
 		wakeup_thread(l);
 	}
 
-	void wakeup_thread(scoped_lock &)
+	void wakeup_thread(scoped_lock & l)
 	{
 		if (!thread_ || quit_) {
 			return;
 		}
 
-#ifdef FZ_WINDOWS
-		WSASetEvent(sync_event_);
-#else
-		poller_.interrupt();
-#endif
+		poller_.interrupt(l);
 	}
 
 protected:
@@ -746,51 +730,43 @@ protected:
 
 		for (;;) {
 #ifdef FZ_WINDOWS
-			int wait_events{};
+			pollinfo info;
+			info.fd_ = socket_->fd_;
+			
 			if (waiting_ & WAIT_CONNECT) {
-				wait_events |= FD_CONNECT;
+				info.events_ |= FD_CONNECT;
 			}
 			if (waiting_ & WAIT_READ) {
-				wait_events |= FD_READ | FD_CLOSE;
+				info.events_ |= FD_READ | FD_CLOSE;
 			}
 			if (waiting_ & WAIT_WRITE) {
-				wait_events |= FD_WRITE;
+				info.events_ |= FD_WRITE;
 			}
 			if (waiting_ & WAIT_ACCEPT) {
-				wait_events |= FD_ACCEPT;
+				info.events_ |= FD_ACCEPT;
 			}
-			WSAEventSelect(socket_->fd_, sync_event_, wait_events);
-			l.unlock();
-			WSAWaitForMultipleEvents(1, &sync_event_, false, WSA_INFINITE, false);
+			bool res = poller_.wait(&info, 1, l);
 
-			l.lock();
-			if (should_quit()) {
-				return false;
-			}
-
-			WSANETWORKEVENTS events;
-			int res = WSAEnumNetworkEvents(socket_->fd_, sync_event_, &events);
-			if (res) {
-				res = last_socket_error();
+			if (!res || should_quit() || socket_->fd_ == -1) {
 				return false;
 			}
 
 			if (waiting_ & WAIT_CONNECT) {
-				if (events.lNetworkEvents & FD_CONNECT) {
+				if (info.result_.lNetworkEvents & FD_CONNECT) {
 					triggered_ |= WAIT_CONNECT;
-					triggered_errors_[0] = convert_msw_error_code(events.iErrorCode[FD_CONNECT_BIT]);
+					triggered_errors_[0] = convert_msw_error_code(info.result_.iErrorCode[FD_CONNECT_BIT]);
 					waiting_ &= ~WAIT_CONNECT;
 				}
 			}
 			if (waiting_ & WAIT_READ) {
-				if (events.lNetworkEvents & FD_READ) {
+				if (info.result_.lNetworkEvents & FD_READ) {
 					triggered_ |= WAIT_READ;
-					triggered_errors_[1] = convert_msw_error_code(events.iErrorCode[FD_READ_BIT]);
+					triggered_errors_[1] = convert_msw_error_code(info.result_.iErrorCode[FD_READ_BIT]);
 					waiting_ &= ~WAIT_READ;
 				}
-				if (events.lNetworkEvents & FD_CLOSE) {
+				if (info.result_.lNetworkEvents & FD_CLOSE) {
 					triggered_ |= WAIT_READ;
-					int err = convert_msw_error_code(events.iErrorCode[FD_CLOSE_BIT]);
+					int err = convert_msw_error_code(info.result_.iErrorCode[FD_CLOSE_BIT]);
 					if (err) {
 						triggered_errors_[1] = err;
 					}
@@ -798,16 +774,16 @@ protected:
 				}
 			}
 			if (waiting_ & WAIT_WRITE) {
-				if (events.lNetworkEvents & FD_WRITE) {
+				if (info.result_.lNetworkEvents & FD_WRITE) {
 					triggered_ |= WAIT_WRITE;
-					triggered_errors_[2] = convert_msw_error_code(events.iErrorCode[FD_WRITE_BIT]);
+					triggered_errors_[2] = convert_msw_error_code(info.result_.iErrorCode[FD_WRITE_BIT]);
 					waiting_ &= ~WAIT_WRITE;
 				}
 			}
 			if (waiting_ & WAIT_ACCEPT) {
-				if (events.lNetworkEvents & FD_ACCEPT) {
+				if (info.result_.lNetworkEvents & FD_ACCEPT) {
 					triggered_ |= WAIT_ACCEPT;
-					triggered_errors_[3] = convert_msw_error_code(events.iErrorCode[FD_ACCEPT_BIT]);
+					triggered_errors_[3] = convert_msw_error_code(info.result_.iErrorCode[FD_ACCEPT_BIT]);
 					waiting_ &= ~WAIT_ACCEPT;
 				}
 			}
@@ -828,11 +804,7 @@ protected:
 			}
 			bool res = poller_.wait(fds, 1, l);
 
-			if (quit_ || !socket_ || socket_->fd_ == -1) {
-				return false;
-			}
-
-			if (!res) {
+			if (!res || should_quit() || socket_->fd_ == -1) {
 				return false;
 			}
 
@@ -906,13 +878,7 @@ protected:
 		}
 		while (!socket_ || (!waiting_ && host_.empty())) {
 
-#if FZ_WINDOWS
-			l.unlock();
-			WSAWaitForMultipleEvents(1, &sync_event_, false, WSA_INFINITE, false);
-			l.lock();
-#else
 			poller_.wait(l);
-#endif
 
 			if (quit_) {
 				return false;
@@ -988,12 +954,7 @@ protected:
 
 	std::vector<socket::socket_t> fds_to_close_;
 
-#ifdef FZ_WINDOWS
-	// We wait on this using WSAWaitForMultipleEvents
-	WSAEVENT sync_event_{WSA_INVALID_EVENT};
-#else
 	poller poller_;
-#endif
 
 	// The socket events we are waiting for
 	int waiting_{};

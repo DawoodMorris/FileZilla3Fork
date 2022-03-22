@@ -1,5 +1,5 @@
-#ifndef LIBFILEZILLA_POLLER_HEADER
-#define LIBFILEZILLA_POLLER_HEADER
+#ifndef LIBFILEZILLA_UNIX_POLLER_HEADER
+#define LIBFILEZILLA_UNIX_POLLER_HEADER
 
 #include "../libfilezilla/libfilezilla.hpp"
 
@@ -33,7 +33,7 @@ public:
 	// fds must be large enough to hold n+1 entries, but fds[n] must not be filled by caller
 	bool wait(struct pollfd *fds, nfds_t n, scoped_lock & l);
 
-	void interrupt();
+	void interrupt(scoped_lock & l);
 
 #if defined(HAVE_EVENTFD)
 	int event_fd_{-1};

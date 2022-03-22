@@ -96,6 +96,7 @@ dist_noinst_HEADERS = \
 	tls_layer_impl.hpp \
 	tls_system_trust_store_impl.hpp \
 	windows/dll.hpp \
+	windows/poller.hpp \
 	windows/security_descriptor_builder.hpp \
 	unix/poller.hpp
 
@@ -103,6 +104,7 @@ if FZ_WINDOWS
 
 libfilezilla_la_SOURCES += \
 	windows/dll.cpp \
+	windows/poller.cpp \
 	windows/registry.cpp \
 	windows/security_descriptor_builder.cpp
 

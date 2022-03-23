@@ -23,16 +23,7 @@ public:
 	int init();
 
 	// Must call locked
-	bool wait(scoped_lock & l)
-	{
-		if (!signalled_) {
-			idle_wait_ = true;
-			cond_.wait(l);
-			signalled_ = false;
-			idle_wait_ = false;
-		}
-		return true;
-	}
+	bool wait(scoped_lock & l);
 
 	// fds must be large enough to hold n+1 entries, but fds[n] must not be filled by caller
 	bool wait(struct pollfd *fds, nfds_t n, scoped_lock & l);

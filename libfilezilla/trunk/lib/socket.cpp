@@ -408,7 +408,6 @@ public:
 	~socket_thread()
 	{
 		thread_.join();
-		destroy_sync();
 		close_socket_fds(fds_to_close_);
 	}
 
@@ -417,11 +416,6 @@ public:
 		return poller_.init();
 	}
 
-
-	void destroy_sync()
-	{
-		// TODO
-	}
 
 	void set_socket(socket_base* pSocket)
 	{
@@ -474,7 +468,6 @@ public:
 		thread_ = socket_->thread_pool_.spawn([this]() { entry(); });
 
 		if (!thread_) {
-			destroy_sync();
 			return EMFILE;
 		}
 

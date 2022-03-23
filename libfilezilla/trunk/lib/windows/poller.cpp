@@ -22,6 +22,17 @@ int poller::init()
 	return 0;
 }
 
+bool poller::wait(scoped_lock & l)
+{
+        if (!signalled_) {
+		idle_wait_ = true;
+		cond_.wait(l);
+		signalled_ = false;
+		idle_wait_ = false;
+	}
+	return true;
+}
+
 // fds must be large enough to hold n+1 entries, but fds[n] must not be filled by caller
 bool poller::wait(pollinfo* fds, size_t n, scoped_lock& l)
 {

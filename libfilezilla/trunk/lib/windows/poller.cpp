@@ -24,12 +24,12 @@ int poller::init()
 
 bool poller::wait(scoped_lock & l)
 {
-        if (!signalled_) {
+    if (!signalled_) {
 		idle_wait_ = true;
 		cond_.wait(l);
-		signalled_ = false;
 		idle_wait_ = false;
 	}
+	signalled_ = false;
 	return true;
 }
 

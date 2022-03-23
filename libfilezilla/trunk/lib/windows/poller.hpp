@@ -32,16 +32,7 @@ public:
 	int init();
 
 	// Must call locked
-	bool wait(scoped_lock & l)
-	{
-		if (!signalled_) {
-			idle_wait_ = true;
-			cond_.wait(l);
-			signalled_ = false;
-			idle_wait_ = false;
-		}
-		return true;
-	}
+	bool wait(scoped_lock & l);
 
 	bool wait(pollinfo* fds, size_t n, scoped_lock& l);
 

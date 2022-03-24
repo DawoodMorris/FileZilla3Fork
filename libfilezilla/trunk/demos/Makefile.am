@@ -1,4 +1,4 @@
-noinst_PROGRAMS = timer_fizzbuzz process events list https
+noinst_PROGRAMS = timer_fizzbuzz process nonblocking_process events list https
 
 timer_fizzbuzz_SOURCES = timer_fizzbuzz.cpp
 
@@ -26,6 +26,19 @@ process_LDADD = ../lib/libfilezilla.la
 process_LDADD += $(libdeps)
 
 process_DEPENDENCIES = ../lib/libfilezilla.la
+
+nonblocking_process_SOURCES = nonblocking_process.cpp
+
+nonblocking_process_CPPFLAGS = $(AM_CPPFLAGS)
+nonblocking_process_CPPFLAGS += -I$(top_srcdir)/lib
+
+nonblocking_process_LDFLAGS = $(AM_LDFLAGS)
+nonblocking_process_LDFLAGS += -no-install
+
+nonblocking_process_LDADD = ../lib/libfilezilla.la
+nonblocking_process_LDADD += $(libdeps)
+
+nonblocking_process_DEPENDENCIES = ../lib/libfilezilla.la
 
 
 events_SOURCES = events.cpp

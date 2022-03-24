@@ -72,7 +72,6 @@ result file::open(native_string const& f, mode m, creation_flags d)
 	}
 
 	SECURITY_ATTRIBUTES attr{};
-	attr.bInheritHandle = false;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 
 	security_descriptor_builder sdb;

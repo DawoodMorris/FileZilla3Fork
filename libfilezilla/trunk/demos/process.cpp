@@ -58,17 +58,17 @@ int main(int argc, char *argv[])
 	bool done = false;
 	while (!done) {
 		char buf[100];
-		int r = p.read(buf, 100);
+		fz::rwresult r = p.read(buf, 100);
 		if (!r) {
-			std::cerr << "Unexpected EOF from process" << std::endl;
-			return 1;
-		}
-		else if (r < 0) {
 			std::cerr << "Could not read from process" << std::endl;
 			return 1;
 		}
+		else if (!r.value_) {
+			std::cerr << "Unexpected EOF from process" << std::endl;
+			return 1;
+		}
 
-		input += std::string(buf, r);
+		input += std::string(buf, r.value_);
 
 		// Extract complete lines from the input
 		auto delim = input.find_first_of("\r\n");
@@ -96,14 +96,14 @@ int main(int argc, char *argv[])
 
 	while (true) {
 		char buf[100];
-		int r = p.read(buf, 100);
+		fz::rwresult r = p.read(buf, 100);
 		if (!r) {
-			std::cerr << "Received the expected EOF from process" << std::endl;
-			break;
-		}
-		else if (r < 0) {
 			std::cerr << "Could not read from process" << std::endl;
 			return 1;
+		}
+		else if (!r.value_) {
+			std::cerr << "Received the expected EOF from process" << std::endl;
+			break;
 		}
 	}
 

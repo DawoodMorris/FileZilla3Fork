@@ -1,9 +1,15 @@
+#include "libfilezilla/event_handler.hpp"
 #include "libfilezilla/impersonation.hpp"
 #include "libfilezilla/process.hpp"
+#include "libfilezilla/thread_pool.hpp"
 
 #ifdef FZ_WINDOWS
 
+#include "libfilezilla/buffer.hpp"
+#include "libfilezilla/encode.hpp"
+#include "libfilezilla/util.hpp"
 #include "libfilezilla/glue/windows.hpp"
+#include "windows/security_descriptor_builder.hpp"
 
 namespace fz {
 
@@ -15,20 +21,12 @@ void reset_handle(HANDLE& handle)
 		handle = INVALID_HANDLE_VALUE;
 	}
 }
-
-bool uninherit(HANDLE& handle)
+void reset_event(HANDLE& handle)
 {
-	if (handle != INVALID_HANDLE_VALUE) {
-		HANDLE newHandle = INVALID_HANDLE_VALUE;
-
-		if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &newHandle, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-			newHandle = INVALID_HANDLE_VALUE;
-		}
+	if (handle && handle != INVALID_HANDLE_VALUE) {
 		CloseHandle(handle);
-		handle = newHandle;
+		handle = 0;
 	}
-
-	return handle != INVALID_HANDLE_VALUE;
 }
 
 class pipe final
@@ -44,25 +42,44 @@ public:
 	pipe(pipe const&) = delete;
 	pipe& operator=(pipe const&) = delete;
 
-	bool create(bool local_is_input)
+	bool create(bool parent_is_reading, bool overlapped)
 	{
 		reset();
 
-		SECURITY_ATTRIBUTES sa{};
-		sa.bInheritHandle = TRUE;
-		sa.nLength = sizeof(sa);
+		auto name = "\\\\.\\pipe\\" + base32_encode(random_bytes(64), base32_type::locale_safe, false);
 
-		BOOL res = CreatePipe(&read_, &write_, &sa, 0);
-		if (res) {
-			// We only want one side of the pipe to be inheritable
-			if (!uninherit(local_is_input ? read_ : write_)) {
-				reset();
-			}
+		DWORD openMode{FILE_FLAG_FIRST_PIPE_INSTANCE};
+		if (overlapped) {
+			openMode |= FILE_FLAG_OVERLAPPED;
 		}
-		else {
-			read_ = INVALID_HANDLE_VALUE;
-			write_ = INVALID_HANDLE_VALUE;
+		openMode |= parent_is_reading ? PIPE_ACCESS_INBOUND : PIPE_ACCESS_OUTBOUND;
+
+		SECURITY_ATTRIBUTES attr{};
+		attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+
+		// Restrict pipe to self
+		security_descriptor_builder sdb;
+		sdb.add(security_descriptor_builder::self);
+		auto sd = sdb.get_sd();
+		if (!sd) {
+			return false;
 		}
+		attr.lpSecurityDescriptor = sd;
+		HANDLE parent_handle = CreateNamedPipeA(name.c_str(), openMode, PIPE_TYPE_BYTE | PIPE_REJECT_REMOTE_CLIENTS, 1, 64 * 1024, 64 * 1024, 0, &attr);
+		if (parent_handle == INVALID_HANDLE_VALUE) {
+			return false;
+		}
+
+		attr.bInheritHandle = true;
+		HANDLE child_handle = CreateFileA(name.c_str(), parent_is_reading ? GENERIC_WRITE : GENERIC_READ, 0, &attr, OPEN_EXISTING, 0, nullptr);
+		if (child_handle == INVALID_HANDLE_VALUE) {
+			CloseHandle(parent_handle);
+			return false;
+		}
+
+		read_ = parent_is_reading ? parent_handle : child_handle;
+		write_ = parent_is_reading ? child_handle : parent_handle;
+
 		return valid();
 	}
 
@@ -139,7 +156,18 @@ HANDLE get_handle(impersonation_token const& t);
 class process::impl
 {
 public:
-	impl() = default;
+	impl(process& p)
+		: process_(p)
+	{
+	}
+
+	impl(process& p, thread_pool& pool, event_handler& handler)
+		: process_(p)
+		, pool_(&pool)
+		, handler_(&handler)
+	{
+	}
+
 	~impl()
 	{
 		kill();
@@ -151,54 +179,177 @@ public:
 	bool create_pipes()
 	{
 		return
-			in_.create(false) &&
-			out_.create(true) &&
-			err_.create(true);
+			in_.create(false, handler_ != nullptr) &&
+			out_.create(true, handler_ != nullptr) &&
+			err_.create(true, false);
+	}
+
+	void thread_entry()
+	{
+		scoped_lock l(mutex_);
+		HANDLE handles[3];
+		handles[0] = sync_;
+
+		while (!quit_) {
+
+			DWORD n = 1;
+			if (waiting_read_) {
+				handles[n++] = ol_read_.hEvent;
+			}
+			if (!write_buffer_.empty()) {
+				handles[n++] = ol_write_.hEvent;
+			}
+
+			l.unlock();
+			DWORD res = WaitForMultipleObjects(n, handles, false, INFINITE);
+			l.lock();
+			if (quit_) {
+				break;
+			}
+			
+			if (res > WAIT_OBJECT_0 && res < (WAIT_OBJECT_0 + n)) {
+				HANDLE h = handles[res - WAIT_OBJECT_0];
+				if (h == ol_read_.hEvent) {
+					waiting_read_ = false;
+					handler_->send_event<process_event>(&process_, process_event_flag::read);
+				}
+				else if (h == ol_write_.hEvent && !write_buffer_.empty()) {
+
+					DWORD written{};
+					DWORD res = GetOverlappedResult(in_.write_, &ol_write_, &written, false);
+					if (res) {
+						write_buffer_.consume(written);
+						if (!write_buffer_.empty()) {
+							DWORD res = WriteFile(in_.write_, write_buffer_.get(), clamped_cast<DWORD>(write_buffer_.size()), nullptr, &ol_write_);
+							DWORD err = GetLastError();
+							if (res || err == ERROR_IO_PENDING) {
+								continue;
+							}
+							write_buffer_.clear();
+							write_error_ = rwresult{ rwresult::other, err };
+						}
+					}
+					else {
+						DWORD err = GetLastError();
+						if (err == ERROR_IO_PENDING) {
+							continue;
+						}
+						write_buffer_.clear();
+						write_error_ = rwresult{ rwresult::other, err };
+					}
+
+					if (waiting_write_) {
+						waiting_write_ = false;
+						handler_->send_event<process_event>(&process_, process_event_flag::write);
+					}
+				}
+			}
+			else if (res != WAIT_OBJECT_0) {
+				break;
+			}
+		}
 	}
 
 	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, io_redirection redirect_mode, impersonation_token const* it = nullptr)
 	{
-		if (process_ != INVALID_HANDLE_VALUE) {
+		if (process_handle_ != INVALID_HANDLE_VALUE) {
 			return false;
-		}
-
-		STARTUPINFO si{};
-		si.cb = sizeof(si);
-
-		if (redirect_mode != io_redirection::none) {
-			if (!create_pipes()) {
-				return false;
-			}
-
-			si.dwFlags = STARTF_USESTDHANDLES;
-			si.hStdInput = in_.read_;
-			si.hStdOutput = out_.write_;
-			si.hStdError = err_.write_;
 		}
 
 		auto cmdline = get_cmd_line(cmd, begin, end);
 
+		bool const inherit = redirect_mode != io_redirection::none;
+		if (inherit) {
+			if (!create_pipes()) {
+				return false;
+			}
+		}
+
+		scoped_lock l(mutex_);
+		if (handler_) {
+			sync_ = CreateEvent(nullptr, false, false, nullptr);
+			ol_read_.hEvent = CreateEvent(nullptr, true, false, nullptr);
+			ol_write_.hEvent = CreateEvent(nullptr, true, false, nullptr);
+			if (!sync_ || !ol_read_.hEvent || !ol_write_.hEvent) {
+				kill();
+				return false;
+			}
+
+			if (redirect_mode == io_redirection::redirect) {
+				DWORD res = ReadFile(out_.read_, read_buffer_.get(64 * 1024), 64 * 1024, nullptr, &ol_read_);
+				DWORD err = GetLastError();
+				if (!res && err != ERROR_IO_PENDING) {
+					kill();
+					return false;
+				}
+				waiting_read_ = true;
+				write_error_ = rwresult{0};
+			}
+
+			task_ = pool_->spawn([this]() { thread_entry(); });
+			if (!task_) {
+				kill();
+				return false;
+			}
+		}
+
+		DWORD flags = CREATE_UNICODE_ENVIRONMENT | CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW;
+
+		STARTUPINFOEXW si{};
+		si.StartupInfo.cb = sizeof(si);
+
+		HANDLE handles[3];
+		if (inherit) {
+			flags |= EXTENDED_STARTUPINFO_PRESENT;
+
+			si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+			si.StartupInfo.hStdInput = in_.read_;
+			si.StartupInfo.hStdOutput = out_.write_;
+			si.StartupInfo.hStdError = err_.write_;
+
+			SIZE_T size_needed{};
+			InitializeProcThreadAttributeList(nullptr, 1, 0, &size_needed);
+
+			si.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(malloc(size_needed));
+			if (InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &size_needed) == 0) {
+				free(si.lpAttributeList);
+				return false;
+			}
+			handles[0] = in_.read_;
+			handles[1] = out_.write_;
+			handles[2] = err_.write_;
+
+			if (!UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, sizeof(handles), nullptr, nullptr)) {
+				DeleteProcThreadAttributeList(si.lpAttributeList);
+				free(si.lpAttributeList);
+				return false;
+			}
+		}
+
 		PROCESS_INFORMATION pi{};
 
-		auto cmdline_buf = cmdline.data();
-
-		DWORD const flags = CREATE_UNICODE_ENVIRONMENT | CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW;
 		BOOL res;
 		if (it) {
-			 res = CreateProcessAsUser(get_handle(*it), cmd.c_str(), cmdline_buf, nullptr, nullptr, TRUE, flags, nullptr, nullptr, &si, &pi);
+			 res = CreateProcessAsUserW(get_handle(*it), cmd.c_str(), cmdline.data(), nullptr, nullptr, inherit, flags, nullptr, nullptr, reinterpret_cast<STARTUPINFOW*>(&si), &pi);
 		}
 		else {
-			res = CreateProcess(cmd.c_str(), cmdline_buf, nullptr, nullptr, TRUE, flags, nullptr, nullptr, &si, &pi);
+			res = CreateProcessW(cmd.c_str(), cmdline.data(), nullptr, nullptr, inherit, flags, nullptr, nullptr, reinterpret_cast<STARTUPINFOW*>(&si), &pi);
 		}
+
+		if (inherit) {
+			DeleteProcThreadAttributeList(si.lpAttributeList);
+			free(si.lpAttributeList);
+		}
+
 		if (!res) {
 			return false;
 		}
 
-		process_ = pi.hProcess;
+		process_handle_ = pi.hProcess;
+		reset_handle(pi.hThread);
 
 		// We don't need to use these
 		if (redirect_mode != io_redirection::none) {
-			reset_handle(pi.hThread);
 			reset_handle(in_.read_);
 			reset_handle(out_.write_);
 			reset_handle(err_.write_);
@@ -212,53 +363,217 @@ public:
 		return true;
 	}
 
-	void kill()
+	void remove_pending_events()
 	{
-		if (process_ != INVALID_HANDLE_VALUE) {
-			in_.reset();
-			if (WaitForSingleObject(process_, 500) == WAIT_TIMEOUT) {
-				TerminateProcess(process_, 0);
-			}
-			reset_handle(process_);
-			out_.reset();
-			err_.reset();
+		if (!handler_) {
+			return;
 		}
-	}
 
-	int read(char* buffer, unsigned int len)
-	{
-		DWORD read = 0;
-		BOOL res = ReadFile(out_.read_, buffer, len, &read, nullptr);
-		if (!res) {
-#if FZ_WINDOWS
-			// ERROR_BROKEN_PIPE indicated EOF.
-			if (GetLastError() == ERROR_BROKEN_PIPE) {
-				return 0;
-			}
-#endif
-			return -1;
-		}
-		return read;
-	}
-
-	bool write(char const* buffer, unsigned int len)
-	{
-		while (len > 0) {
-			DWORD written = 0;
-			BOOL res = WriteFile(in_.write_, buffer, len, &written, nullptr);
-			if (!res || written == 0) {
+		auto process_event_filter = [&](event_loop::Events::value_type const& ev) -> bool {
+			if (ev.first != handler_) {
 				return false;
 			}
-			buffer += written;
-			len -= written;
-		}
-		return true;
+			else if (ev.second->derived_type() == process_event::type()) {
+				return std::get<0>(static_cast<process_event const&>(*ev.second).v_) == &process_;
+			}
+			return false;
+		};
+
+		handler_->event_loop_.filter_events(process_event_filter);
 	}
 
-	HANDLE handle() const { return process_; }
+	bool kill(bool wait = true, bool force = false)
+	{
+		if (handler_) {
+			{
+				scoped_lock l(mutex_);
+				if (task_) {
+					quit_ = true;
+					SetEvent(sync_);
+				}
+			}
+			task_.join();
+			quit_ = false;
+
+			remove_pending_events();
+		}
+
+		reset_event(ol_read_.hEvent);
+		reset_event(ol_write_.hEvent);
+		reset_event(sync_);
+
+		in_.reset();
+		if (process_handle_ != INVALID_HANDLE_VALUE) {
+			if (force) {
+				TerminateProcess(process_handle_, 0);
+			}
+			else {
+				if (WaitForSingleObject(process_handle_, wait ? INFINITE : 0) == WAIT_TIMEOUT) {
+					return false;
+				}
+			}
+			reset_handle(process_handle_);
+		}
+		out_.reset();
+		err_.reset();
+
+		return true;
+	}
+	
+	template<class A, class B>
+	constexpr bool cmp_less(A a, B b) noexcept
+	{
+		static_assert(std::is_integral_v<A>);
+		static_assert(std::is_integral_v<B>);
+		if constexpr (std::is_signed_v<A> == std::is_signed_v<B>) {
+			return a < b;
+		}
+		else if constexpr (std::is_signed_v<A>) {
+			if (a < 0) {
+				return true;
+			}
+			else {
+				return std::make_unsigned_t<A>(a) < b;
+			}
+		}
+		else {
+			if (b < 0) {
+				return false;
+			}
+			else {
+				return a < std::make_unsigned_t<B>(b);
+			}
+		}
+	}
+
+	template<typename Out, typename In>
+	constexpr Out clamped_cast(In in) noexcept
+	{
+		if (cmp_less(in, std::numeric_limits<Out>::min())) {
+			return std::numeric_limits<Out>::min();
+		}
+		if (cmp_less(std::numeric_limits<Out>::max(), in)) {
+			return std::numeric_limits<Out>::max();
+		}
+		return static_cast<Out>(in);
+	}
+
+	rwresult read(void* buffer, size_t len)
+	{
+		if (!len) {
+			return rwresult{rwresult::invalid, 0};
+		}
+
+		if (handler_) {
+			scoped_lock l(mutex_);
+			while (true) {
+				if (!read_buffer_.empty()) {
+					len = std::min(read_buffer_.size(), len);
+					memcpy(buffer, read_buffer_.get(), len);
+					read_buffer_.consume(len);
+
+					if (read_buffer_.empty()) {
+						DWORD res = ReadFile(out_.read_, read_buffer_.get(64 * 1024), 64 * 1024, nullptr, &ol_read_);
+						DWORD err = GetLastError();
+						if (res || err == ERROR_IO_PENDING) {
+							waiting_read_ = true;
+							SetEvent(sync_);
+							return rwresult(len);
+						}
+						return rwresult{ rwresult::other, err };
+					}
+				}
+				if (waiting_read_) {
+					return rwresult{ rwresult::wouldblock, 0 };
+				}
+
+				DWORD read{};
+				DWORD res = GetOverlappedResult(out_.read_, &ol_read_, &read, false);
+				if (res) {
+					read_buffer_.add(read);
+				}
+				else {
+					DWORD err = GetLastError();
+					if (err == ERROR_IO_PENDING) {
+						waiting_read_ = true;
+						SetEvent(sync_);
+						return rwresult{ rwresult::wouldblock, 0 };
+					}
+					else if (err == ERROR_HANDLE_EOF || err == ERROR_BROKEN_PIPE) {
+						return rwresult(0);
+					}
+					return rwresult{ rwresult::other, err };
+				}
+			}
+		}
+		else {
+			DWORD read = 0;
+			DWORD to_read = clamped_cast<DWORD>(len);
+			BOOL res = ReadFile(out_.read_, buffer, to_read, &read, nullptr);
+			if (!res) {
+				DWORD const err = GetLastError();
+				// ERROR_BROKEN_PIPE indicates EOF.
+				if (err == ERROR_BROKEN_PIPE) {
+					return rwresult(0);
+				}
+				return rwresult{ rwresult::other, err };
+			}
+			return rwresult(static_cast<size_t>(read));
+		}
+	}
+
+	rwresult write(void const* buffer, size_t len)
+	{
+		if (handler_) {
+			scoped_lock l(mutex_);
+			if (waiting_write_ || !write_buffer_.empty()) {
+				waiting_write_ = true;
+				return rwresult{rwresult::wouldblock, 0};
+			}
+			if (write_error_.error_) {
+				return write_error_;
+			}
+			write_buffer_.append(reinterpret_cast<unsigned char const*>(buffer), len);
+
+			DWORD res = WriteFile(in_.write_, write_buffer_.get(), clamped_cast<DWORD>(write_buffer_.size()), nullptr, &ol_write_);
+			DWORD err = GetLastError();
+			if (res || err == ERROR_IO_PENDING) {
+				SetEvent(sync_);
+				return rwresult(len);
+			}
+			return rwresult{rwresult::other, err};
+		}
+		else {
+			DWORD written = 0;
+			DWORD to_write = clamped_cast<DWORD>(len);
+			BOOL res = WriteFile(in_.write_, buffer, to_write, &written, nullptr);
+			if (!res || written == 0) {
+				return rwresult{ rwresult::other, GetLastError() };
+			}
+			return rwresult{ static_cast<size_t>(written) };
+		}
+	}
+
+	HANDLE handle() const { return process_handle_; }
 
 private:
-	HANDLE process_{INVALID_HANDLE_VALUE};
+	process & process_;
+	thread_pool * pool_;
+	event_handler * handler_;
+
+	mutex mutex_;
+	fz::async_task task_;
+	fz::buffer read_buffer_;
+	fz::buffer write_buffer_;
+	HANDLE sync_{INVALID_HANDLE_VALUE};
+	OVERLAPPED ol_read_{};
+	OVERLAPPED ol_write_{};
+	rwresult write_error_{0};
+	bool waiting_read_{true};
+	bool waiting_write_{};
+	bool quit_{};
+
+	HANDLE process_handle_{INVALID_HANDLE_VALUE};
 
 	pipe in_;
 	pipe out_;
@@ -269,6 +584,7 @@ private:
 
 #include "libfilezilla/glue/unix.hpp"
 #include "libfilezilla/mutex.hpp"
+#include "unix/poller.hpp"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -361,7 +677,17 @@ mutex forkblock_mtx_;
 class process::impl
 {
 public:
-	impl() = default;
+	impl(process & p)
+		: process_(p)
+	{}
+
+	impl(process & p, thread_pool & pool, event_handler & handler)
+		: process_(p)
+		, pool_(&pool)
+		, handler_(&handler)
+	{
+	}
+
 	~impl()
 	{
 		kill();
@@ -378,6 +704,55 @@ public:
 			err_.create();
 	}
 
+	void thread_entry()
+	{
+		scoped_lock l(mutex_);
+		while (!quit_) {
+			if (waiting_read_ || waiting_write_) {
+				struct pollfd fds[3]{};
+				nfds_t n{};
+				if (waiting_read_) {
+					fds[n].fd = out_.read_;
+					fds[n++].events = POLLIN;
+				}
+				if (waiting_write_) {
+					fds[n].fd = in_.write_;
+					fds[n++].events = POLLOUT;
+				}
+				if (!poller_.wait(fds, n, l)) {
+					break;
+				}
+
+				if (quit_) {
+					break;
+				}
+
+				for (size_t i = 0; i < n; ++i) {
+					if (fds[i].fd == out_.read_ && waiting_read_) {
+						if (fds[i].revents & (POLLIN|POLLHUP|POLLERR)) {
+							waiting_read_ = false;
+
+							handler_->send_event<process_event>(&process_, process_event_flag::read);
+						}
+					}
+					else if (fds[i].fd == in_.write_ && waiting_write_) {
+						if (fds[i].revents & (POLLOUT|POLLHUP|POLLERR)) {
+							waiting_write_ = false;
+
+							handler_->send_event<process_event>(&process_, process_event_flag::write);
+						}
+					}
+				}
+			}
+			else {
+
+				if (!poller_.wait(l)) {
+					break;
+				}
+			}
+		}
+	}
+
 	bool spawn(native_string const& cmd, std::vector<native_string>::const_iterator const& begin, std::vector<native_string>::const_iterator const& end, io_redirection redirect_mode, std::vector<int> const& extra_fds = std::vector<int>(), impersonation_token const* it = nullptr)
 	{
 		if (pid_ != -1) {
@@ -385,15 +760,31 @@ public:
 		}
 
 		if (redirect_mode != io_redirection::none && !create_pipes()) {
+			kill();
 			return false;
 		}
 
 		std::vector<char*> argV;
 		get_argv(cmd, begin, end, argV);
 
-		scoped_lock l(forkblock_mtx_);
+		scoped_lock l(mutex_);
+		if (handler_) {
+			if (poller_.init() != 0) {
+				kill();
+				return false;
+			}
+			task_ = pool_->spawn([this]() { thread_entry(); });
+			if (!task_) {
+				kill();
+				return false;
+			}
+		}
+
+
+		scoped_lock fbl(forkblock_mtx_);
 		pid_t pid = fork();
 		if (pid < 0) {
+			kill();
 			return false;
 		}
 		else if (!pid) {
@@ -443,6 +834,8 @@ public:
 			// We're the parent
 			pid_ = pid;
 
+			fbl.unlock();
+
 			// Close unneeded descriptors
 			if (redirect_mode != io_redirection::none) {
 				reset_fd(in_.read_);
@@ -453,63 +846,161 @@ public:
 					reset_fd(out_.read_);
 					reset_fd(err_.read_);
 				}
+				else {
+					if (handler_) {
+						set_nonblocking(in_.write_);
+						set_nonblocking(out_.read_);
+						set_nonblocking(err_.read_);
+
+						waiting_read_ = true;
+						waiting_write_ = false;
+					}
+				}
 			}
 		}
 
 		return true;
 	}
 
-	void kill()
+	void remove_pending_events()
 	{
+		if (!handler_) {
+			return;
+		}
+
+		auto process_event_filter = [&](event_loop::Events::value_type const& ev) -> bool {
+			if (ev.first != handler_) {
+				return false;
+			}
+			else if (ev.second->derived_type() == process_event::type()) {
+				return std::get<0>(static_cast<process_event const&>(*ev.second).v_) == &process_;
+			}
+			return false;
+		};
+
+		handler_->event_loop_.filter_events(process_event_filter);
+	}
+
+	bool kill(bool wait = true, bool force = false)
+	{
+		if (handler_) {
+			{
+				scoped_lock l(mutex_);
+				quit_ = true;
+				poller_.interrupt(l);
+			}
+			task_.join();
+			quit_ = false;
+
+			remove_pending_events();
+		}
 		in_.reset();
 
 		if (pid_ != -1) {
-			::kill(pid_, SIGTERM);
+			::kill(pid_, force ? SIGKILL : SIGTERM);
 
-			int ret;
+			pid_t ret;
 			do {
-			} while ((ret = waitpid(pid_, nullptr, 0)) == -1 && errno == EINTR);
+				ret = waitpid(pid_, nullptr, wait ? 0 : WNOHANG);
+			} while (ret == -1 && errno == EINTR);
 
-			(void)ret;
+			if (!ret) {
+				return false;
+			}
 
 			pid_ = -1;
 		}
 
 		out_.reset();
 		err_.reset();
-	}
 
-	int read(char* buffer, unsigned int len)
-	{
-		int r;
-		do {
-			r = ::read(out_.read_, buffer, len);
-		} while (r == -1 && (errno == EAGAIN || errno == EINTR));
-
-		return r;
-	}
-
-	bool write(char const* buffer, unsigned int len)
-	{
-		while (len) {
-			int written;
-			do {
-				written = ::write(in_.write_, buffer, len);
-			} while (written == -1 && (errno == EAGAIN || errno == EINTR));
-
-			if (written <= 0) {
-				return false;
-			}
-
-			len -= written;
-			buffer += written;
-		}
 		return true;
 	}
+
+	rwresult read(void* buffer, unsigned int len)
+	{
+#if DEBUG_SOCKETEVENTS
+		assert(!waiting_read_);
+#endif
+		while (true) {
+			ssize_t r = ::read(out_.read_, buffer, len);
+			int const err = errno;
+			if (r >= 0) {
+				return rwresult{static_cast<size_t>(r)};
+			}
+			if (err == EINTR) {
+				continue;
+			}
+			if (err == EAGAIN && !handler_) {
+				continue;
+			}
+			switch (err) {
+			case EAGAIN:
+				{
+					scoped_lock l(mutex_);
+					waiting_read_ = true;
+					poller_.interrupt(l);
+				}
+				return rwresult{rwresult::wouldblock, err};
+			case EIO:
+				return rwresult{rwresult::other, err};
+			default:
+				return rwresult{rwresult::invalid, err};
+			}
+		}
+	}
+
+	rwresult write(void const* buffer, unsigned int len)
+	{
+#if DEBUG_SOCKETEVENTS
+		assert(!waiting_write_);
+#endif
+		while (true) {
+			ssize_t written = ::write(in_.write_, buffer, len);
+			if (written >= 0) {
+				return rwresult{static_cast<size_t>(written)};
+			}
+			if (errno == EINTR) {
+				continue;
+			}
+			if (errno == EAGAIN && !handler_) {
+				continue;
+			}
+			int const err = errno;
+			switch (err) {
+			case EAGAIN:
+				{
+					scoped_lock l(mutex_);
+					waiting_read_ = true;
+					poller_.interrupt(l);
+				}
+				return rwresult{rwresult::wouldblock, err};
+			case EIO:
+				return rwresult{rwresult::other, err};
+			case ENOSPC:
+				return rwresult{rwresult::nospace, err};
+			default:
+				return rwresult{rwresult::invalid, err};
+			}
+		}
+	}
+
+	process & process_;
+
+	thread_pool * pool_{};
+	event_handler * handler_{};
+	mutex mutex_;
+	async_task task_;
+	bool quit_{};
+
+	poller poller_;
 
 	pipe in_;
 	pipe out_;
 	pipe err_;
+
+	bool waiting_read_{true};
+	bool waiting_write_{};
 
 	int pid_{-1};
 };
@@ -518,7 +1009,12 @@ public:
 
 
 process::process()
-	: impl_(new impl)
+	: impl_(new impl(*this))
+{
+}
+
+process::process(thread_pool & pool, event_handler & handler)
+	: impl_(new impl(*this, pool, handler))
 {
 }
 
@@ -565,21 +1061,22 @@ bool process::spawn(std::vector<native_string> const& command_with_args, io_redi
 	return impl_ ? impl_->spawn(command_with_args.front(), begin, command_with_args.end(), redirect_mode) : false;
 }
 
-void process::kill()
+bool process::kill(bool wait, bool force)
 {
 	if (impl_) {
-		impl_->kill();
+		return impl_->kill(wait, force);
 	}
+	return true;
 }
 
-int process::read(char* buffer, unsigned int len)
+rwresult process::read(void* buffer, size_t len)
 {
-	return impl_ ? impl_->read(buffer, len) : -1;
+	return impl_ ? impl_->read(buffer, len) : rwresult{rwresult::invalid};
 }
 
-bool process::write(char const* buffer, unsigned int len)
+rwresult process::write(void const* buffer, size_t len)
 {
-	return impl_ ? impl_->write(buffer, len) : false;
+	return impl_ ? impl_->write(buffer, len) : rwresult{rwresult::invalid};
 }
 
 #if FZ_WINDOWS
@@ -748,7 +1245,7 @@ bool spawn_detached_process(std::vector<native_string> const& cmd_with_args)
 	auto cmdline_buf = cmdline.data();
 
 	DWORD const flags = CREATE_UNICODE_ENVIRONMENT | CREATE_DEFAULT_ERROR_MODE | CREATE_NO_WINDOW;
-	BOOL res = CreateProcess(cmd_with_args.front().c_str(), cmdline_buf, nullptr, nullptr, TRUE, flags, nullptr, nullptr, &si, &pi);
+	BOOL res = CreateProcess(cmd_with_args.front().c_str(), cmdline_buf, nullptr, nullptr, false, flags, nullptr, nullptr, &si, &pi);
 	if (!res) {
 		return false;
 	}

@@ -31,6 +31,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "demo_https", "demos\demo_ht
 		{E1BC2AC0-F3DD-4892-8CF2-1041A63F7C9C} = {E1BC2AC0-F3DD-4892-8CF2-1041A63F7C9C}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "demo_nonblocking_process", "demos\demo_nonblocking_process.vcxproj", "{D2894A62-F3A2-451E-A06F-87F4F01A4506}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E1BC2AC0-F3DD-4892-8CF2-1041A63F7C9C} = {E1BC2AC0-F3DD-4892-8CF2-1041A63F7C9C}
+		{306B18D9-E2FB-4674-80D0-C3D33530F21E} = {306B18D9-E2FB-4674-80D0-C3D33530F21E}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		dll_debug|x64 = dll_debug|x64
@@ -61,6 +67,10 @@ Global
 		{5090DBA2-00A4-4038-8D1F-0C933204AB2E}.dll_debug|x64.Build.0 = dll_debug|x64
 		{5090DBA2-00A4-4038-8D1F-0C933204AB2E}.dll_release|x64.ActiveCfg = dll_release|x64
 		{5090DBA2-00A4-4038-8D1F-0C933204AB2E}.dll_release|x64.Build.0 = dll_release|x64
+		{D2894A62-F3A2-451E-A06F-87F4F01A4506}.dll_debug|x64.ActiveCfg = dll_debug|x64
+		{D2894A62-F3A2-451E-A06F-87F4F01A4506}.dll_debug|x64.Build.0 = dll_debug|x64
+		{D2894A62-F3A2-451E-A06F-87F4F01A4506}.dll_release|x64.ActiveCfg = dll_release|x64
+		{D2894A62-F3A2-451E-A06F-87F4F01A4506}.dll_release|x64.Build.0 = dll_release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -4,8 +4,10 @@
 #include "private/visibility.hpp"
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace fz {
+
 /**
  * \brief Small class to return filesystem errors
  *
@@ -16,11 +18,12 @@ namespace fz {
  * The raw error code isn't always available. If available, it is
  * the value of errno/GetLastError() when the failure occurred.
  */
-class FZ_PUBLIC_SYMBOL result final
+class FZ_PUBLIC_SYMBOL result
 {
 public:
 	enum error {
 		ok,
+		none = ok,
 
 		/// Invalid arguments, syntax error
 		invalid,
@@ -54,6 +57,50 @@ public:
 	raw_t raw_{};
 };
 
+class FZ_PUBLIC_SYMBOL rwresult final
+{
+public:
+#if FZ_WINDOWS
+	typedef uint32_t raw_t; // DWORD alternative without windows.h
+#else
+	typedef int raw_t;
+#endif
+
+	enum error {
+		none,
+
+		/// Invalid arguments, syntax error
+		invalid,
+
+		/// Out of disk space
+		nospace,
+
+		/// The operation would have blocked, but the file descriptor is marked non-blocking
+		wouldblock,
+
+		/// Some other error
+		other
+	};
+
+	explicit rwresult(error e, raw_t raw)
+	    : error_(e)
+	    , raw_(raw)
+	    , value_(-1)
+	{}
+
+	explicit rwresult(size_t value)
+	    : value_(value)
+	{}
+
+	/// Equivalent to value_ >= 0
+	explicit operator bool() const { return error_ == 0; }
+
+	error error_{};
+
+	raw_t raw_{};
+
+	size_t value_{};
+};
 }
 
 #endif

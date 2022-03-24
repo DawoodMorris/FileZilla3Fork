@@ -13,7 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{3EA8235D-C77A-4A9C-9435-00CCEDA69AA5}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>demo_list</RootNamespace>
+    <RootNamespace>demo_process</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -47,6 +47,7 @@
     <IntDir>$(OutDir)$(ProjectName)/</IntDir>
     <IncludePath>$(ProjectDir)..\lib\;$(IncludePath)</IncludePath>
     <ExecutablePath>$(ProjectDir)..\lib\$(Platform)_$(Configuration);$(ExecutablePath)</ExecutablePath>
+    <TargetName>process</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='dll_release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -54,6 +55,7 @@
     <IntDir>$(OutDir)$(ProjectName)/</IntDir>
     <IncludePath>$(ProjectDir)..\lib\;$(IncludePath)</IncludePath>
     <ExecutablePath>$(ProjectDir)..\lib\$(Platform)_$(Configuration);$(ExecutablePath)</ExecutablePath>
+    <TargetName>process</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

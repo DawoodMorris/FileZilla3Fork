@@ -11,9 +11,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{306B18D9-E2FB-4674-80D0-C3D33530F21E}</ProjectGuid>
+    <ProjectGuid>{D2894A62-F3A2-451E-A06F-87F4F01A4506}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>demo_timer_fizzbuzz</RootNamespace>
+    <RootNamespace>demo_nonblocking_process</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -47,7 +47,7 @@
     <IntDir>$(OutDir)$(ProjectName)/</IntDir>
     <IncludePath>$(ProjectDir)..\lib\;$(IncludePath)</IncludePath>
     <ExecutablePath>$(ProjectDir)..\lib\$(Platform)_$(Configuration);$(ExecutablePath)</ExecutablePath>
-    <TargetName>timer_fizzbuzz</TargetName>
+    <TargetName>nonblocking_process</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='dll_release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -55,7 +55,7 @@
     <IntDir>$(OutDir)$(ProjectName)/</IntDir>
     <IncludePath>$(ProjectDir)..\lib\;$(IncludePath)</IncludePath>
     <ExecutablePath>$(ProjectDir)..\lib\$(Platform)_$(Configuration);$(ExecutablePath)</ExecutablePath>
-    <TargetName>timer_fizzbuzz</TargetName>
+    <TargetName>nonblocking_process</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -68,8 +68,8 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>FZ_USING_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Prenonblocking_processorDefinitions>FZ_USING_DLL;%(Prenonblocking_processorDefinitions)</Prenonblocking_processorDefinitions>
+      <Multinonblocking_processorCompilation>true</Multinonblocking_processorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -85,8 +85,8 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>FZ_USING_DLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Prenonblocking_processorDefinitions>FZ_USING_DLL;NDEBUG;%(Prenonblocking_processorDefinitions)</Prenonblocking_processorDefinitions>
+      <Multinonblocking_processorCompilation>true</Multinonblocking_processorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -97,9 +97,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="timer_fizzbuzz.cpp" />
+    <ClCompile Include="nonblocking_process.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-  </ImportGroup>
 </Project>

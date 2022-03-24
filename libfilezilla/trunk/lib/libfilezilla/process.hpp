@@ -2,33 +2,73 @@
 #define LIBFILEZILLA_PROCESS_HEADER
 
 #include "libfilezilla.hpp"
+#include "fsresult.hpp"
+#include "event.hpp"
 
 /** \file
- * \brief Header for the \ref fz::process "process" class
+ * \brief Header for the #\ref fz::process "process" class
  */
 
 #include <vector>
 
-#ifdef FZ_WINDOWS
-#include "glue/windows.hpp"
-#endif
-
 namespace fz {
+class event_handler;
 class impersonation_token;
+class thread_pool;
+
+
+/** \brief The type of a process event
+ *
+ * In received events, exactly a single bit is always set.
+ */
+enum class process_event_flag
+{
+	/// Data has become available.
+	read = 0x1,
+
+	/// data can be written.
+	write = 0x2,
+};
+
+/// \private
+struct process_event_type;
+
+class process;
+
+/**
+ * All processevents are sent through this.
+ *
+ * \sa \ref fz::process_event_flag
+ *
+ * Read and write events are edge-triggered:
+ * - After receiving a read event for a process, it will not be sent again
+ *   unless a subsequent call to process::read has returned EAGAIN.
+ * - The same holds for the write event and process::write
+ *
+ * It is a grave violation to call the read/write functions
+ * again after they returned EAGAIN without first waiting for the event.
+ */
+typedef simple_event<process_event_type, process*, process_event_flag> process_event;
 
 /** \brief The process class manages an asynchronous process with redirected IO.
  *
  * No console window is being created.
 
  * To use, spawn the process and, since it's blocking, call read from a different thread.
- *
  */
 class FZ_PUBLIC_SYMBOL process final
 {
 public:
+	/// Creates instance for blocking I/O
 	process();
-	~process();
 
+	/** \brief Creates instance with non-blocking event-based redirected communication
+	 *
+	 * Event semantic akin to \sa fz::socket
+	 */
+	process(fz::thread_pool & pool, fz::event_handler & handler);
+
+	~process();
 	process(process const&) = delete;
 	process& operator=(process const&) = delete;
 
@@ -49,6 +89,8 @@ public:
 	 *
 	 * \note May return \c true even if the process cannot be started. In that case, trying to read from the process
 	 * will fail with an error or EOF.
+	 *
+	 * If the communication is non-blocking, a successful spawn doubles as process event with write flag
 	 */
 	bool spawn(native_string const& cmd, std::vector<native_string> const& args = std::vector<native_string>(), io_redirection redirect_mode = io_redirection::redirect);
 
@@ -73,11 +115,12 @@ public:
 
 	/** \brief Stops the spawned process
 	 *
-	 * This function doesn't actually kill the process, it merely closes the pipes.
+	 * If wait is true, blocks until the process has quit.
+	 * If force is true, kills the task, otherwise politeley asks it to close
 	 *
-	 * Blocks until the process has quit.
+	 * Returns whether the process has quit.
 	 */
-	void kill();
+	bool kill(bool wait = true, bool force = false);
 
 	/** \brief Read data from process
 	 *
@@ -87,7 +130,7 @@ public:
 	 * \return 0 on EOF
 	 * \return -1 on error.
 	 */
-	int read(char* buffer, unsigned int len);
+	rwresult read(void* buffer, size_t len);
 
 	/** \brief Write data data process
 	 *
@@ -96,17 +139,17 @@ public:
 	 * \return true if all octets have been written.
 	 * \return false on error.
 	 */
-	bool write(char const* buffer, unsigned int len);
+	rwresult write(void const* buffer, size_t len);
 
-	inline bool write(std::string_view const& s) {
-		return write(s.data(), static_cast<unsigned int>(s.size()));
+	inline rwresult write(std::string_view const& s) {
+		return write(s.data(), s.size());
 	}
 
 #if FZ_WINDOWS
 	/** \brief
-	 * Returns the HANDLE of the process.
+	 * Returns the HANDLE of the process
 	 */
-	HANDLE handle() const;
+	void* handle() const;
 #endif
 
 private:

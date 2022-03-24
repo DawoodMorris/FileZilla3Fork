@@ -15,7 +15,13 @@
 /// \brief A simple demonstration of using fz::process
 ///
 /// This example spawns the \ref timer_fizzbuzz.cpp demo and controls it
-/// via the redirected IO.
+/// via the redirected IO, in blocking mode.
+
+/// \example nonblocking_process.cpp
+/// \brief A simple demonstration of using fz::process
+///
+/// This example spawns the \ref timer_fizzbuzz.cpp demo and controls it
+/// via the redirected IO, in non-blocking mode.
 
 /// \example list.cpp
 /// \brief A simple demonstration of using fz::local_filesys

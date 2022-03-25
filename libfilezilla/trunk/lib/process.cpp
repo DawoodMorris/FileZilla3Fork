@@ -607,6 +607,10 @@ private:
 #include <ApplicationServices/ApplicationServices.h>
 #endif
 
+#if DEBUG_SOCKETEVENTS
+#include <assert.h>
+#endif
+
 namespace fz {
 
 namespace {

@@ -92,13 +92,14 @@ public:
 	    : value_(value)
 	{}
 
-	/// Equivalent to value_ >= 0
 	explicit operator bool() const { return error_ == 0; }
 
 	error error_{};
 
+	/// Undefined if error_ is none
 	raw_t raw_{};
 
+	/// Undefined if error_ is not none
 	size_t value_{};
 };
 }

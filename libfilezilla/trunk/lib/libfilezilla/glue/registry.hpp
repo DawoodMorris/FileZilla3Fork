@@ -1,6 +1,10 @@
 #ifndef LIBFILEZILLA_GLUE_REGISTRY_HEADER
 #define LIBFILEZILLA_GLUE__REGISTRY_HEADER
 
+/** \file
+ * \brief Declares fz::regkey to access the Windows Registry
+ */
+
 #include "../libfilezilla.hpp"
 
 #ifdef FZ_WINDOWS
@@ -11,6 +15,13 @@
 #include "windows.h"
 
 namespace fz {
+
+/**
+ * \brief Prepresents a key in the Windows registry
+ *
+ * Can access both the appropaire native registry view, as well
+ * as explicitly the 32-bit and 64bit registry views.
+ */
 class FZ_PUBLIC_SYMBOL regkey final
 {
 public:
@@ -23,6 +34,8 @@ public:
 		regview_64
 	};
 
+
+	/// See \sa regkey::open
 	explicit regkey(HKEY const root, std::wstring const& subkey, bool readonly, regview v = regview_native);
 
 	regkey(regkey const&) = delete;
@@ -30,11 +43,19 @@ public:
 
 	void close();
 
+	/**
+	 * \brief Opens the specified registry key
+	 *
+	 * If readonly is not set, missing subkeys are automatically created
+	 */
 	bool open(HKEY const root, std::wstring const& subkey, bool readonly, regview v = regview_native);
 
 	bool has_value(std::wstring const& name) const;
 
+	/// Gets the value with the given name as wstring, converting if necessary
 	std::wstring value(std::wstring const& name) const;
+
+	/// Gets the value with the given name as integer, converting if necessary
 	uint64_t int_value(std::wstring const& name) const;
 
 	bool set_value(std::wstring const& name, std::wstring const& value);

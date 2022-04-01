@@ -1,3 +1,15 @@
+0.37.0 (2022-04-01)
+
++ *nix: password-less impersonation can take an optional group
++ Added demo https client showcasing usage of fz::socket and fz::tls_layer
++ Added some compile-time checks for fz::sprintf arguments
++ MSW: Added fz::registry
++ Added a way to use non-blocking read/write with fz::process
+- Added fz::logger_interface::log_u which assumes string arguments are in UTF-8 as opposed to the character set used by the current locale
+- Disallow spawning additional threads while fz::thread_pool is in the process of being destroyed
+- *nix: poll() is now mandatory, the select() based socket event loop has been removed
+- Simplified fz::socket implementation through use of internal fz::poller
+
 0.36.0 (2022-02-02)
 
 + Added parameter to tls_layer::set_alpn to control which peer has priority over which ALPN is chosen.

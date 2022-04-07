@@ -125,6 +125,16 @@ public:
 
 	explicit operator bool() const { return type_ != json_type::none; }
 
+	bool has_non_null_value() const {
+		return type_ != fz::json_type::none && type_ != fz::json_type::null;
+	}
+
+	bool is_null() const { return type_ == fz::json_type::null; }
+	bool is_object() const { return type_ == fz::json_type::object; }
+	bool is_array() const { return type_ == fz::json_type::array; }
+	bool is_number() const { return type_ == fz::json_type::number; }
+	bool is_boolean() const { return type_ == fz::json_type::boolean; }
+
 	/** \brief Serializes JSON structure
 	 *
 	 * Children of objects with none type are ignored.

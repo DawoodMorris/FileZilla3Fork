@@ -558,8 +558,8 @@ public:
 
 private:
 	process & process_;
-	thread_pool * pool_;
-	event_handler * handler_;
+	thread_pool * pool_{};
+	event_handler * handler_{};
 
 	mutex mutex_;
 	fz::async_task task_;

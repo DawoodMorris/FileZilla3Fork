@@ -1671,12 +1671,10 @@ void tls_layer_impl::log_verification_error(int status)
 		logger_.log(logmsg::error, fztranslate("The server's hostname does not match the certificate's hostname"));
 		status &= ~GNUTLS_CERT_UNEXPECTED_OWNER;
 	}
-#ifdef GNUTLS_CERT_MISSING_OCSP_STATUS
 	if (status & GNUTLS_CERT_MISSING_OCSP_STATUS) {
 		logger_.log(logmsg::error, fztranslate("The certificate requires the server to include an OCSP status in its response, but the OCSP status is missing."));
 		status &= ~GNUTLS_CERT_MISSING_OCSP_STATUS;
 	}
-#endif
 	if (status) {
 		if (status == GNUTLS_CERT_INVALID) {
 			logger_.log(logmsg::error, fztranslate("Received certificate chain could not be verified."));

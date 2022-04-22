@@ -475,11 +475,13 @@ public:
 					if (read_buffer_.empty()) {
 						DWORD res = ReadFile(out_.read_, read_buffer_.get(64 * 1024), 64 * 1024, nullptr, &ol_read_);
 						DWORD err = GetLastError();
-						if (!res && err != ERROR_IO_PENDING) {
-							return rwresult{ rwresult::other, err };
+						if (!res) {
+							if (err != ERROR_IO_PENDING) {
+								return rwresult{ rwresult::other, err };
+							}
+							waiting_read_ = true;
+							SetEvent(sync_);
 						}
-						waiting_read_ = true;
-						SetEvent(sync_);
 					}
 					return rwresult(len);
 				}

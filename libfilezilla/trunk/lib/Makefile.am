@@ -16,6 +16,7 @@ libfilezilla_la_SOURCES = \
 	json.cpp \
 	jws.cpp \
 	local_filesys.cpp \
+	logger.cpp \
 	mutex.cpp \
 	nonowning_buffer.cpp \
 	process.cpp \

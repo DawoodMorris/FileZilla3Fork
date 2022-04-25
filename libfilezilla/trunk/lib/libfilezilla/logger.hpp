@@ -50,7 +50,7 @@ namespace logmsg
 class logger_interface
 {
 public:
-	logger_interface() = default;
+	logger_interface() noexcept = default;
 	virtual ~logger_interface() = default;
 
 	logger_interface(logger_interface const&) = delete;
@@ -152,6 +152,23 @@ private:
 		return arg;
 	}
 };
+
+/// A logger that does not log anything.
+class FZ_PUBLIC_SYMBOL null_logger final : public logger_interface
+{
+public:
+	null_logger() noexcept
+	{
+		disable(levels());
+	}
+
+	virtual void do_log(logmsg::type, std::wstring &&) override {}
+	virtual void set_all(logmsg::type) override {}
+	virtual void enable(logmsg::type) override {}
+};
+
+null_logger FZ_PUBLIC_SYMBOL & get_null_logger();
+
 }
 
 #endif

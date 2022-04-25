@@ -87,6 +87,7 @@
     <ClCompile Include="invoker.cpp" />
     <ClCompile Include="iputils.cpp" />
     <ClCompile Include="local_filesys.cpp" />
+    <ClCompile Include="logger.cpp" />
     <ClCompile Include="mutex.cpp" />
     <ClCompile Include="nonowning_buffer.cpp" />
     <ClCompile Include="process.cpp" />

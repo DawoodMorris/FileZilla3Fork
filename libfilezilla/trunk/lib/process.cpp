@@ -395,6 +395,21 @@ public:
 			task_.join();
 			quit_ = false;
 
+			if (out_.read_ != INVALID_HANDLE_VALUE) {
+				CancelIo(out_.read_);
+				DWORD read{};
+				while (!GetOverlappedResult(out_.read_, &ol_read_, &read, false) && GetLastError() == ERROR_IO_PENDING) {
+					yield();
+				}
+			}
+			if (in_.write_ != INVALID_HANDLE_VALUE) {
+				CancelIo(in_.write_);
+				DWORD written{};
+				while (!GetOverlappedResult(in_.write_, &ol_write_, &written, false) && GetLastError() == ERROR_IO_PENDING) {
+					yield();
+				}
+			}
+
 			remove_pending_events();
 		}
 
@@ -460,7 +475,7 @@ public:
 
 	rwresult read(void* buffer, size_t len)
 	{
-		if (!len) {
+		if (!len || out_.read_ == INVALID_HANDLE_VALUE) {
 			return rwresult{rwresult::invalid, 0};
 		}
 

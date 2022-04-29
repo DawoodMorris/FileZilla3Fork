@@ -338,11 +338,11 @@ std::string to_string(std::wstring_view const& in)
 #if FZ_WINDOWS
 		wchar_t const* const in_p = in.data();
 		BOOL usedDefault = FALSE;
-		int const len = WideCharToMultiByte(CP_ACP, 0, in_p, static_cast<int>(in.size()), nullptr, 0, nullptr, &usedDefault);
+		int const len = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, in_p, static_cast<int>(in.size()), nullptr, 0, nullptr, &usedDefault);
 		if (len > 0 && !usedDefault) {
 			ret.resize(len);
 			char* out_p = ret.data();
-			WideCharToMultiByte(CP_ACP, 0, in_p, static_cast<int>(in.size()), out_p, len, nullptr, nullptr);
+			WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, in_p, static_cast<int>(in.size()), out_p, len, nullptr, nullptr);
 		}
 #else
 		size_t start = 0;

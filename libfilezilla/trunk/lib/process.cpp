@@ -60,7 +60,7 @@ public:
 		// Restrict pipe to self
 		security_descriptor_builder sdb;
 		sdb.add(security_descriptor_builder::self);
-		auto sd = sdb.get_sd(false);
+		auto sd = sdb.get_sd(sdb_flags::none);
 		if (!sd) {
 			return false;
 		}

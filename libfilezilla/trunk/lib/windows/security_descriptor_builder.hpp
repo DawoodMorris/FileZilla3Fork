@@ -12,7 +12,7 @@ namespace fz {
 enum class sdb_flags : unsigned
 {
 	none = 0,
-	inherit = 0x1, // ACLs from parent can be inherited
+	inherit_from_parent = 0x1, // ACLs from parent can be inherited
 	inheritable = 0x2, // Allos ACLs to be inherited by children
 };
 inline bool operator&(sdb_flags lhs, sdb_flags rhs) {

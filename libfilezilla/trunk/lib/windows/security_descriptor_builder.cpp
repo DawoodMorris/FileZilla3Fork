@@ -125,7 +125,7 @@ ACL* security_descriptor_builder::get_acl(sdb_flags f)
 
 	if (impl_->acl_) {
 		InitializeSecurityDescriptor(&impl_->sd_, SECURITY_DESCRIPTOR_REVISION);
-		SetSecurityDescriptorControl(&impl_->sd_, SE_DACL_PROTECTED, (f & sdb_flags::inherit) ? SE_DACL_PROTECTED : 0);
+		SetSecurityDescriptorControl(&impl_->sd_, SE_DACL_PROTECTED, (f & sdb_flags::inherit_from_parent) ? 0 : SE_DACL_PROTECTED);
 		SetSecurityDescriptorDacl(&impl_->sd_, TRUE, impl_->acl_.get(), FALSE);
 		SetSecurityDescriptorOwner(&impl_->sd_, impl_->user_->User.Sid, FALSE);
 		SetSecurityDescriptorGroup(&impl_->sd_, NULL, FALSE);

@@ -120,7 +120,7 @@ AC_CHECK_DECLS([pthread_condattr_setclock], [], [], [[#include <pthread.h>]])
 if test "$windows" = "1"; then
   libdeps="-lws2_32"
 else
-  libdeps=-pthread
+  libdeps=-lpthread
   CHECK_ICONV([libdeps="$libdeps -liconv"])
 
   CHECK_RANDOM

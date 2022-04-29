@@ -9,6 +9,25 @@
 #include <memory>
 
 namespace fz {
+enum class sdb_flags : unsigned
+{
+	none = 0,
+	inherit = 0x1, // ACLs from parent can be inherited
+	inheritable = 0x2, // Allos ACLs to be inherited by children
+};
+inline bool operator&(sdb_flags lhs, sdb_flags rhs) {
+	return (static_cast<std::underlying_type_t<sdb_flags>>(lhs) & static_cast<std::underlying_type_t<sdb_flags>>(rhs)) != 0;
+}
+inline sdb_flags operator|(sdb_flags lhs, sdb_flags rhs)
+{
+	return static_cast<sdb_flags>(static_cast<std::underlying_type_t<sdb_flags>>(lhs) | static_cast<std::underlying_type_t<sdb_flags>>(rhs));
+}
+inline sdb_flags& operator|=(sdb_flags& lhs, sdb_flags rhs)
+{
+	lhs = lhs | rhs;
+	return lhs;
+}
+
 class security_descriptor_builder final
 {
 public:
@@ -25,8 +44,8 @@ public:
 
 	void add(entity e, DWORD rights = GENERIC_ALL | STANDARD_RIGHTS_ALL | SPECIFIC_RIGHTS_ALL);
 
-	ACL* get_acl(bool inheritable);
-	SECURITY_DESCRIPTOR* get_sd(bool inheritable);
+	ACL* get_acl(sdb_flags f);
+	SECURITY_DESCRIPTOR* get_sd(sdb_flags f);
 
 private:
 	struct impl;

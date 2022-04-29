@@ -81,7 +81,7 @@ result file::open(native_string const& f, mode m, creation_flags d)
 			sdb.add(security_descriptor_builder::administrators);
 		}
 
-		auto sd = sdb.get_sd(false);
+		auto sd = sdb.get_sd(sdb_flags::none);
 		if (!sd) {
 			return {result::other};
 		}

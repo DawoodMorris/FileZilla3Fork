@@ -99,7 +99,7 @@ void security_descriptor_builder::add(entity e, DWORD rights)
 	impl_->rights_[e] = rights;
 }
 
-ACL* security_descriptor_builder::get_acl(bool inheritable)
+ACL* security_descriptor_builder::get_acl(sdb_flags f)
 {
 	if (impl_->acl_) {
 		return impl_->acl_.get();
@@ -115,7 +115,7 @@ ACL* security_descriptor_builder::get_acl(bool inheritable)
 	if (InitializeAcl(acl.get(), needed, ACL_REVISION)) {
 		for (auto it = impl_->rights_.cbegin(); acl && it != impl_->rights_.cend(); ++it) {
 			auto sid = impl_->get_sid(it->first);
-			DWORD flags = inheritable ? (CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE) : 0;
+			DWORD flags = (f & sdb_flags::inheritable) ? (CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE) : 0;
 			if (!sid || !AddAccessAllowedAceEx(acl.get(), ACL_REVISION, flags, it->second, sid.get())) {
 				return {};
 			}
@@ -125,6 +125,7 @@ ACL* security_descriptor_builder::get_acl(bool inheritable)
 
 	if (impl_->acl_) {
 		InitializeSecurityDescriptor(&impl_->sd_, SECURITY_DESCRIPTOR_REVISION);
+		SetSecurityDescriptorControl(&impl_->sd_, SE_DACL_PROTECTED, (f & sdb_flags::inherit) ? SE_DACL_PROTECTED : 0);
 		SetSecurityDescriptorDacl(&impl_->sd_, TRUE, impl_->acl_.get(), FALSE);
 		SetSecurityDescriptorOwner(&impl_->sd_, impl_->user_->User.Sid, FALSE);
 		SetSecurityDescriptorGroup(&impl_->sd_, NULL, FALSE);
@@ -134,9 +135,9 @@ ACL* security_descriptor_builder::get_acl(bool inheritable)
 	return impl_->acl_.get();
 }
 
-SECURITY_DESCRIPTOR* security_descriptor_builder::get_sd(bool inheritable)
+SECURITY_DESCRIPTOR* security_descriptor_builder::get_sd(sdb_flags f)
 {
-	if (!get_acl(inheritable)) {
+	if (!get_acl(f)) {
 		return nullptr;
 	}
 

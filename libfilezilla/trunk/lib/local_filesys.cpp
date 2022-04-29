@@ -925,7 +925,7 @@ result do_mkdir(native_string const& path, mkdir_permissions permissions)
 		if (permissions == mkdir_permissions::cur_user_and_admins) {
 			sdb.add(security_descriptor_builder::administrators);
 		}
-		auto sd = sdb.get_sd(sdb_flags::inherit);
+		auto sd = sdb.get_sd(sdb_flags::inheritable);
 		if (!sd) {
 			return {result::other};
 		}

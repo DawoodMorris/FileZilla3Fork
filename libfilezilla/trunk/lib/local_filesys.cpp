@@ -917,7 +917,6 @@ result do_mkdir(native_string const& path, mkdir_permissions permissions)
 #ifdef FZ_WINDOWS
 
 	SECURITY_ATTRIBUTES attr{};
-	attr.bInheritHandle = false;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 
 	security_descriptor_builder sdb;
@@ -926,7 +925,7 @@ result do_mkdir(native_string const& path, mkdir_permissions permissions)
 		if (permissions == mkdir_permissions::cur_user_and_admins) {
 			sdb.add(security_descriptor_builder::administrators);
 		}
-		auto sd = sdb.get_sd();
+		auto sd = sdb.get_sd(true);
 		if (!sd) {
 			return {result::other};
 		}

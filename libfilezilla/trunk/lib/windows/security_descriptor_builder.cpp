@@ -99,7 +99,7 @@ void security_descriptor_builder::add(entity e, DWORD rights)
 	impl_->rights_[e] = rights;
 }
 
-ACL* security_descriptor_builder::get_acl()
+ACL* security_descriptor_builder::get_acl(bool inheritable)
 {
 	if (impl_->acl_) {
 		return impl_->acl_.get();
@@ -115,7 +115,8 @@ ACL* security_descriptor_builder::get_acl()
 	if (InitializeAcl(acl.get(), needed, ACL_REVISION)) {
 		for (auto it = impl_->rights_.cbegin(); acl && it != impl_->rights_.cend(); ++it) {
 			auto sid = impl_->get_sid(it->first);
-			if (!sid || !AddAccessAllowedAce(acl.get(), ACL_REVISION, it->second, sid.get())) {
+			DWORD flags = inheritable ? (CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE) : 0;
+			if (!sid || !AddAccessAllowedAceEx(acl.get(), ACL_REVISION, flags, it->second, sid.get())) {
 				return {};
 			}
 		}
@@ -133,9 +134,9 @@ ACL* security_descriptor_builder::get_acl()
 	return impl_->acl_.get();
 }
 
-SECURITY_DESCRIPTOR* security_descriptor_builder::get_sd()
+SECURITY_DESCRIPTOR* security_descriptor_builder::get_sd(bool inheritable)
 {
-	if (!get_acl()) {
+	if (!get_acl(inheritable)) {
 		return nullptr;
 	}
 

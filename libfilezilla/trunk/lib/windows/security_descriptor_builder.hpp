@@ -25,8 +25,8 @@ public:
 
 	void add(entity e, DWORD rights = GENERIC_ALL | STANDARD_RIGHTS_ALL | SPECIFIC_RIGHTS_ALL);
 
-	ACL* get_acl();
-	SECURITY_DESCRIPTOR* get_sd();
+	ACL* get_acl(bool inheritable);
+	SECURITY_DESCRIPTOR* get_sd(bool inheritable);
 
 private:
 	struct impl;

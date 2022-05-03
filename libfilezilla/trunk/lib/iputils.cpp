@@ -301,8 +301,8 @@ address_type get_address_type(std::wstring_view const& address)
 
 std::optional<std::vector<network_interface>> FZ_PUBLIC_SYMBOL get_network_interfaces()
 {
-	static winsock_initializer init;
 #if FZ_WINDOWS
+	static winsock_initializer init;
 	ULONG size = 16 * 1024;
 	auto buf = std::make_unique<char[]>(16 * 1024);
 	while (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_INCLUDE_PREFIX, nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.get()), &size) != ERROR_SUCCESS) {

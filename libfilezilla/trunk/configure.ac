@@ -118,7 +118,7 @@ CHECK_CLOCK_GETTIME
 AC_CHECK_DECLS([pthread_condattr_setclock], [], [], [[#include <pthread.h>]])
 
 if test "$windows" = "1"; then
-  libdeps="-lws2_32"
+  libdeps="-lws2_32 -liphlpapi"
 else
   libdeps=-lpthread
   CHECK_ICONV([libdeps="$libdeps -liconv"])

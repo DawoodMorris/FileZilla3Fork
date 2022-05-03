@@ -339,29 +339,6 @@ int do_set_buffer_sizes(socket::socket_t fd, int size_read, int size_write)
 	return ret;
 }
 
-#ifdef FZ_WINDOWS
-class winsock_initializer final
-{
-public:
-	winsock_initializer()
-	{
-		WSADATA d{};
-		initialized_ = WSAStartup((2 << 8) | 8, &d) == 0;
-	}
-
-	~winsock_initializer()
-	{
-		if (initialized_) {
-			WSACleanup();
-		}
-	}
-
-private:
-	bool initialized_{};
-};
-#endif
-
-
 void close_socket_fds(std::vector<socket::socket_t> & fds_to_close)
 {
 	for (auto fd : fds_to_close) {
@@ -386,6 +363,21 @@ void close_socket_fd(socket::socket_t& fd)
 	}
 }
 }
+
+#ifdef FZ_WINDOWS
+winsock_initializer::winsock_initializer()
+{
+	WSADATA d{};
+	initialized_ = WSAStartup((2 << 8) | 8, &d) == 0;
+}
+
+winsock_initializer::~winsock_initializer()
+{
+	if (initialized_) {
+		WSACleanup();
+	}
+}
+#endif
 
 class socket_thread final
 {

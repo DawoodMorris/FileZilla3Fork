@@ -712,6 +712,17 @@ native_string FZ_PUBLIC_SYMBOL socket_error_description(int error);
 
 #ifdef FZ_WINDOWS
 
+/// \private
+class FZ_PRIVATE_SYMBOL winsock_initializer final
+{
+public:
+	winsock_initializer();
+	~winsock_initializer();
+
+private:
+	bool initialized_{};
+};
+
 #ifndef EISCONN
 #define EISCONN WSAEISCONN
 #endif

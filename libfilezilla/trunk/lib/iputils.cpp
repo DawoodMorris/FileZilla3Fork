@@ -1,7 +1,13 @@
 #include "libfilezilla/iputils.hpp"
 #include "libfilezilla/encode.hpp"
 
-#if __linux__
+#if FZ_WINDOWS
+#include "libfilezilla/socket.hpp"
+#include "libfilezilla/glue/windows.hpp"
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <memory>
+#elif __linux__
 #include "libfilezilla/socket.hpp"
 #include <ifaddrs.h>
 #include <sys/socket.h>
@@ -295,7 +301,50 @@ address_type get_address_type(std::wstring_view const& address)
 
 std::optional<std::vector<network_interface>> FZ_PUBLIC_SYMBOL get_network_interfaces()
 {
-#if __linux__
+	static winsock_initializer init;
+#if FZ_WINDOWS
+	ULONG size = 16 * 1024;
+	auto buf = std::make_unique<char[]>(16 * 1024);
+	while (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_INCLUDE_PREFIX, nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.get()), &size) != ERROR_SUCCESS) {
+		DWORD err = GetLastError();
+		if (err != ERROR_BUFFER_OVERFLOW) {
+			return {};
+		}
+		buf = std::make_unique<char[]>(size);
+	}
+
+	std::vector<network_interface> out;
+	for (auto cur = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.get()); cur; cur = cur->Next) {
+		std::wstring name = cur->FriendlyName;
+		auto raw_mac = fz::hex_encode<std::string>(std::string_view{ reinterpret_cast<char const*>(cur->PhysicalAddress), cur->PhysicalAddressLength });
+		std::string mac;
+		for (size_t i = 0; i < raw_mac.size(); ++i) {
+			if (i && !(i % 2)) {
+				mac += ':';
+			}
+			mac += raw_mac[i];
+		}
+
+		std::vector<std::string> ips;
+		for (auto addr = cur->FirstUnicastAddress; addr; addr = addr->Next) {
+			if (!addr->Address.lpSockaddr) {
+				continue;
+			}
+			if (addr->Address.lpSockaddr->sa_family != AF_INET && addr->Address.lpSockaddr->sa_family != AF_INET6) {
+				continue;
+			}
+			if (!(addr->Flags & IP_ADAPTER_ADDRESS_DNS_ELIGIBLE)) {
+				continue;
+			}
+			ips.emplace_back(fz::socket_base::address_to_string(addr->Address.lpSockaddr, addr->Address.iSockaddrLength, false, true) + '/' + to_string(addr->OnLinkPrefixLength));
+		}
+		if (!ips.empty()) {
+			out.emplace_back(network_interface{ std::move(name), std::move(mac), std::move(ips) });
+		}
+	}
+	return out;
+
+#elif __linux__
 	int fd = ::socket(AF_NETLINK, SOCK_DGRAM|SOCK_CLOEXEC, NETLINK_ROUTE);
 	if (fd == -1) {
 		return {};

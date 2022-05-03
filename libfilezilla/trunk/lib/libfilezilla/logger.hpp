@@ -47,7 +47,7 @@ namespace logmsg
  * The actual string to log gets assembled from the format string and its
  * arguments only if the type is supposed to be logged.
  */
-class logger_interface
+class FZ_PUBLIC_SYMBOL logger_interface
 {
 public:
 	logger_interface() noexcept = default;

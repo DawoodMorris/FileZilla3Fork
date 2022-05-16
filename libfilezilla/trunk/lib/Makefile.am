@@ -1,6 +1,9 @@
 lib_LTLIBRARIES = libfilezilla.la
 
 libfilezilla_la_SOURCES = \
+	aio.cpp \
+	aio_reader.cpp \
+	aio_writer.cpp \
 	buffer.cpp \
 	encode.cpp \
 	encryption.cpp \
@@ -40,6 +43,9 @@ libfilezilla_la_SOURCES = \
 	version.cpp
 
 nobase_include_HEADERS = \
+	libfilezilla/aio.hpp \
+	libfilezilla/aio_reader.hpp \
+	libfilezilla/aio_writer.hpp \
 	libfilezilla/apply.hpp \
 	libfilezilla/buffer.hpp \
 	libfilezilla/encode.hpp \

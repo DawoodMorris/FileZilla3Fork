@@ -1,8 +1,8 @@
 #ifndef LIBFILEZILLA_AIO_HEADER
 #define LIBFILEZILLA_AIO_HEADER
 
-#include <libfilezilla/mutex.hpp>
-#include <libfilezilla/nonowning_buffer.hpp>
+#include "mutex.hpp"
+#include "nonowning_buffer.hpp"
 
 namespace fz {
 

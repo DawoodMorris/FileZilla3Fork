@@ -42,7 +42,8 @@ enum class address_type
 {
 	unknown,
 	ipv4,
-	ipv6
+	ipv6,
+	unix
 };
 
 /** \brief Gets the type of the passed IP address. */

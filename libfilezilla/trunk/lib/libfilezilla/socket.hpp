@@ -578,7 +578,7 @@ public:
 
 	socket_t get_descriptor();
 
-#if FZ_UNIX
+#ifndef FZ_WINDOWS
 	/** Sends file descriptors over a Unix Domain Socket.
 	 *
 	 * fd may be -1.

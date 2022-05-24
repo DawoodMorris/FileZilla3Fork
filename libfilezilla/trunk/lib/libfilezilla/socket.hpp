@@ -21,6 +21,7 @@
 struct sockaddr;
 
 namespace fz {
+class buffer;
 class thread_pool;
 
 /** \brief The type of a socket event
@@ -174,7 +175,7 @@ public:
 	 */
 	int set_buffer_sizes(int size_receive, int size_send);
 
-	/// If connected, either ipv4 or ipv6, unknown otherwise
+	/// If connected, either ipv4, ipv6 or unix, unknown otherwise
 	address_type address_family() const;
 
 	/**
@@ -299,7 +300,6 @@ public:
 	 *
 	 * The address type, if not fz::address_type::unknown, must may the type of the address passed to bind()
 	 */
-
 	int listen(address_type family, int port = 0);
 
 	/// Accepts incoming connection. If no socket is returned, error contains the reason
@@ -401,7 +401,7 @@ public:
 		}
 		return write(buffer, static_cast<unsigned int>(size), error);
 	}
-	
+
 	virtual void set_event_handler(event_handler* pEvtHandler, fz::socket_event_flag retrigger_block = fz::socket_event_flag{}) = 0;
 
 	virtual native_string peer_host() const = 0;
@@ -577,6 +577,36 @@ public:
 	virtual int shutdown_read() override { return 0; }
 
 	socket_t get_descriptor();
+
+#if FZ_UNIX
+	/** Sends file descriptors over a Unix Domain Socket.
+	 *
+	 * fd may be -1.
+	 * If fd is not -1, the buffer must not be empty.
+	 *
+	 * Returns the amount of bytes sent, which may be less than requested, or -1 on error.
+	 *
+	 * If any bytes got sent then the descriptor has been sent as well.
+	 *
+	 * If having sent an fd, you should not send any other fd until the buffer has been completely
+	 * sent.
+	 *
+	 * The data you sent should be structured such that the receiving end can detect which
+	 * parts of data in the stream have a descriptor associated with it.
+	 */
+	int send_fd(fz::buffer & buf, int fd, int & error);
+
+	/** Reads data and file descriptors from a Unix Domain Socket
+	 *
+	 * Appends any read data to the buffer, returns the number of bytes added.
+	 *
+	 * Returns 0 on EOF, -1 on error.
+	 *
+	 * If a descriptor got read, it is returned in the fd argument. If no descriptor got read,
+	 * fd is set to -1.
+	 */
+	int read_fd(fz::buffer & buf, int &fd, int & error);
+#endif
 
 private:
 	friend class socket_base;

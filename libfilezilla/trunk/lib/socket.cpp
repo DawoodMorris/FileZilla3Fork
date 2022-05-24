@@ -585,7 +585,9 @@ protected:
 		}
 		else {
 			static_cast<socket*>(socket_)->state_ = socket_state::connected;
-
+			if (socket_->family_ == AF_UNSPEC) {
+				socket_->family_ = addr.ai_family;
+			}
 #if HAVE_TCP_INFO
 			if (socket_->buffer_sizes_[0] == -1 && !unmodified_rcv_wscale) {
 				unmodified_rcv_wscale = get_rcv_wscale(socket_->fd_);
@@ -1034,9 +1036,25 @@ int socket_base::close()
 
 std::string socket_base::address_to_string(sockaddr const* addr, int addr_len, bool with_port, bool strip_zone_index)
 {
+	if (!addr) {
+		return {};
+	}
+
 	char hostbuf[NI_MAXHOST];
 	char portbuf[NI_MAXSERV];
 
+	if (!addr_len) {
+		switch (addr->sa_family) {
+			case AF_INET:
+				addr_len = sizeof(struct sockaddr_in);
+				break;
+			case AF_INET6:
+				addr_len = sizeof(struct sockaddr_in6);
+				break;
+			default:
+				return {};
+		}
+	}
 	int res = getnameinfo(addr, addr_len, hostbuf, NI_MAXHOST, portbuf, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV);
 	if (res) { // Should never fail
 		return std::string();
@@ -1113,6 +1131,10 @@ address_type socket_base::address_family() const
 		return address_type::ipv4;
 	case AF_INET6:
 		return address_type::ipv6;
+#ifndef FZ_WINDOWS
+	case AF_UNIX:
+		return address_type::unix;
+#endif
 	default:
 		return address_type::unknown;
 	}
@@ -1423,10 +1445,17 @@ std::unique_ptr<socket> socket::from_descriptor(socket_descriptor && desc, threa
 		pSocket->host_ = to_native(pSocket->peer_ip());
 		pSocket->evt_handler_ = handler;
 		pSocket->socket_thread_->waiting_ = WAIT_READ;
+
+		sockaddr_u addr;
+		socklen_t addr_len = sizeof(addr);
+		if (!getsockname(fd, &addr.sockaddr_, &addr_len)) {
+			pSocket->family_ = addr.sockaddr_.sa_family;
+		}
 		if (pSocket->socket_thread_->start()) {
 			error = ENOMEM;
 			pSocket.reset();
 		}
+
 	}
 
 	return pSocket;
@@ -1731,6 +1760,70 @@ void socket::set_flags(int flags)
 	}
 	flags_ = flags;
 }
+
+#ifndef FZ_WINDOWS
+int socket::read_fd(fz::buffer & buf, int &fd, int & error)
+{
+	if (!socket_thread_) {
+		fd = -1;
+		error = EBADF;
+		return -1;
+	}
+
+	{
+		scoped_lock l(socket_thread_->mutex_);
+		if (family_ != AF_UNIX) {
+			fd = -1;
+			error = EBADF;
+			return -1;
+		}
+#if DEBUG_SOCKETEVENTS
+		assert(!(socket_thread_->waiting_ & WAIT_READ));
+		assert(!has_pending_event(evt_handler_, this, socket_event_flag::read));
+#endif
+	}
+
+	int res = fz::read_fd(fd_, buf, fd, error);
+	if (res == -1 && error == EAGAIN) {
+		scoped_lock l(socket_thread_->mutex_);
+		if (!(socket_thread_->waiting_ & WAIT_READ)) {
+			socket_thread_->waiting_ |= WAIT_READ;
+			socket_thread_->wakeup_thread(l);
+		}
+	}
+	return res;
+}
+
+int socket::send_fd(fz::buffer & buf, int fd, int & error)
+{
+	if (!socket_thread_) {
+		error = EBADF;
+		return -1;
+	}
+
+	{
+		scoped_lock l(socket_thread_->mutex_);
+		if (family_ != AF_UNIX) {
+			error = EBADF;
+			return -1;
+		}
+#if DEBUG_SOCKETEVENTS
+		assert(!(socket_thread_->waiting_ & WAIT_WRITE));
+		assert(!has_pending_event(evt_handler_, this, socket_event_flag::write | socket_event_flag::connection));
+#endif
+	}
+
+	int res = fz::read_fd(fd_, buf, fd, error);
+	if (res == -1 && error == EAGAIN) {
+		scoped_lock l(socket_thread_->mutex_);
+		if (!(socket_thread_->waiting_ & WAIT_WRITE)) {
+			socket_thread_->waiting_ |= WAIT_WRITE;
+			socket_thread_->wakeup_thread(l);
+		}
+	}
+	return res;
+}
+#endif
 
 socket_layer::socket_layer(event_handler* handler, socket_interface& next_layer, bool event_passthrough)
 	: socket_interface(next_layer.root())

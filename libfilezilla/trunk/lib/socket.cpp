@@ -1813,7 +1813,7 @@ int socket::send_fd(fz::buffer & buf, int fd, int & error)
 #endif
 	}
 
-	int res = fz::read_fd(fd_, buf, fd, error);
+	int res = fz::send_fd(fd_, buf, fd, error);
 	if (res == -1 && error == EAGAIN) {
 		scoped_lock l(socket_thread_->mutex_);
 		if (!(socket_thread_->waiting_ & WAIT_WRITE)) {

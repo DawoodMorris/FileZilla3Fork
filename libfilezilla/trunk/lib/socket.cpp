@@ -1442,6 +1442,7 @@ std::unique_ptr<socket> socket::from_descriptor(socket_descriptor && desc, threa
 	else {
 		pSocket->state_ = socket_state::connected;
 		pSocket->fd_ = fd;
+		fd = -1;
 		pSocket->host_ = to_native(pSocket->peer_ip());
 		pSocket->evt_handler_ = handler;
 		pSocket->socket_thread_->waiting_ = WAIT_READ;
@@ -1455,8 +1456,8 @@ std::unique_ptr<socket> socket::from_descriptor(socket_descriptor && desc, threa
 			error = ENOMEM;
 			pSocket.reset();
 		}
-
 	}
+	close_socket_fd(fd);
 
 	return pSocket;
 }

@@ -1147,7 +1147,9 @@ int socket_base::local_port(int& error) const
 	error = getsockname(fd_, &addr.sockaddr_, &addr_len);
 	if (error) {
 #ifdef FZ_WINDOWS
-		error = convert_msw_error_code(error);
+		error = convert_msw_error_code(WSAGetLastError());
+#else
+		error = errno;
 #endif
 		return -1;
 	}

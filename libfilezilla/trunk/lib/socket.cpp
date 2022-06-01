@@ -1449,7 +1449,7 @@ std::unique_ptr<socket> socket::from_descriptor(socket_descriptor && desc, threa
 
 		sockaddr_u addr;
 		socklen_t addr_len = sizeof(addr);
-		if (!getsockname(fd, &addr.sockaddr_, &addr_len)) {
+		if (!getsockname(pSocket->fd_, &addr.sockaddr_, &addr_len)) {
 			pSocket->family_ = addr.sockaddr_.sa_family;
 		}
 		if (pSocket->socket_thread_->start()) {

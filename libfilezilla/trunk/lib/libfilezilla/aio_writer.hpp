@@ -5,6 +5,8 @@
 #include "file.hpp"
 #include "thread_pool.hpp"
 
+#include <list>
+
 namespace fz {
 class FZ_PUBLIC_SYMBOL writer_base : public aio_waitable
 {
@@ -38,7 +40,7 @@ protected:
 	std::wstring const name_;
 
 	size_t const max_buffers_{};
-	std::vector<buffer_lease> buffers_;
+	std::list<buffer_lease> buffers_;
 
 	bool error_{};
 	bool finalize_{};

@@ -11,12 +11,20 @@ void reader_base::close()
 	buffers_.clear();
 }
 
+bool reader_base::rewind()
+{
+	return seek(start_offset_, size_);
+}
+
 bool reader_base::seek(uint64_t offset, uint64_t size)
 {
 	// Step 1: Sanity checks, ignore seekable() for now
 
 	if (offset == nosize) {
-		offset = start_offset_;
+		offset = (start_offset_ == nosize) ? 0 : start_offset_;
+		if (size == nosize) {
+			size = size_;
+		}
 	}
 
 	if (size != nosize && nosize - size <= offset) {
@@ -62,7 +70,10 @@ bool reader_base::seek(uint64_t offset, uint64_t size)
 	}
 
 	if (!seekable()) {
-		return false;
+		// Cannot start again if we already started once. Neither can we start from not the beginning.
+		if (start_offset_ != nosize || offset != 0) {
+			return false;
+		}
 	}
 
 	buffer_pool_.remove_waiter(*this);
@@ -81,13 +92,15 @@ bool reader_base::seek(uint64_t offset, uint64_t size)
 		}
 	}
 	remaining_ = size_;
-	eof_ = false;
+	eof_ = remaining_ == 0;
 	get_buffer_called_ = false;
 
 	return do_seek(l);
 }
 
-std::pair<aio_result, buffer_lease> reader_base::get_buffer(aio_waiter & h)
+
+
+std::pair<aio_result, buffer_lease> threaded_reader::get_buffer(aio_waiter & h)
 {
 	scoped_lock l(mtx_);
 
@@ -104,47 +117,53 @@ std::pair<aio_result, buffer_lease> reader_base::get_buffer(aio_waiter & h)
 	else {
 		bool const w = buffers_.size() == max_buffers_;
 		buffer_lease b = std::move(buffers_.front());
-		buffers_.erase(buffers_.begin());
+		buffers_.pop_front();
 		if (w) {
 			wakeup(l);
 		}
+		get_buffer_called_ = true;
 		return {aio_result::ok, std::move(b)};
 	}
 }
 
 
-file_reader::file_reader(thread_pool & tpool, file && f, std::wstring && name, aio_buffer_pool & pool, size_t max_buffers) noexcept
-    : reader_base(name, pool, max_buffers)
+file_reader::file_reader(std::wstring && name, aio_buffer_pool & pool, file && f, thread_pool & tpool, uint64_t offset, uint64_t size, size_t max_buffers) noexcept
+	: threaded_reader(name, pool, max_buffers)
     , file_(std::move(f))
     , thread_pool_(tpool)
 {
 	scoped_lock l(mtx_);
 	if (file_) {
 		auto s = file_.size();
-		if (s > 0) {
-			size_ = s;
-			max_size_ = s;
+		if (s >= 0) {
+			max_size_ = static_cast<uint64_t>(s);
 		}
-		task_ = tpool.spawn([this]{ entry(); });
+		if (!seek(offset, size)) {
+			error_ = true;
+		}
 	}
-	if (!file_ || !task_) {
+	else {
 		error_ = true;
 	}
 }
 
-file_reader::file_reader(thread_pool & tpool, file && f, std::wstring_view name, aio_buffer_pool & pool, size_t max_buffers) noexcept
-    : reader_base(name, pool, max_buffers)
+file_reader::file_reader(std::wstring_view name, aio_buffer_pool & pool, file && f, thread_pool & tpool, uint64_t offset, uint64_t size, size_t max_buffers) noexcept
+	: threaded_reader(name, pool, max_buffers)
     , file_(std::move(f))
     , thread_pool_(tpool)
 {
 	scoped_lock l(mtx_);
 	if (file_) {
 		auto s = file_.size();
-		if (s > 0) {
-			size_ = s;
-			max_size_ = s;
+		if (s >= 0) {
+			max_size_ = static_cast<uint64_t>(s);
 		}
-		task_ = tpool.spawn([this]{ entry(); });
+		if (s >= 0) {
+			max_size_ = static_cast<uint64_t>(s);
+		}
+		if (!seek(offset, size)) {
+			error_ = true;
+		}
 	}
 	if (!file_ || !task_) {
 		error_ = true;
@@ -186,9 +205,14 @@ bool file_reader::do_seek(scoped_lock & l)
 		return false;
 	}
 
-	// Re-start thread
-	task_ = thread_pool_.spawn([this]{ entry(); });
-	return task_.operator bool();
+	// Re-start thread if needed
+	if (!eof_) {
+		task_ = thread_pool_.spawn([this]{ entry(); });
+		return task_.operator bool();
+	}
+	else {
+		return true;
+	}
 }
 
 void file_reader::wakeup(scoped_lock & l)
@@ -231,7 +255,12 @@ void file_reader::entry()
 				break;
 			}
 			else if (!r) {
-				eof_ = true;
+				if (remaining_ && remaining_ != nosize) {
+					error_ = true;
+				}
+				else {
+					eof_ = true;
+				}
 				break;
 			}
 			b->add(r);
@@ -246,13 +275,67 @@ void file_reader::entry()
 				signal_availibility();
 			}
 		}
-		if (eof_) {
-			if (buffers_.empty()) {
-				signal_availibility();
-			}
+		if ((eof_ || error_) && !quit_ && buffers_.empty()) {
+			signal_availibility();
 			break;
 		}
 	}
+}
+
+
+memory_reader::memory_reader(std::wstring && name, aio_buffer_pool & pool, std::string_view data) noexcept
+	: reader_base(name, pool, 1)
+	, data_(data)
+{
+	size_ = max_size_ = remaining_ = data_.size();
+	if (!remaining_) {
+		eof_ = true;
+	}
+}
+
+memory_reader::~memory_reader()
+{
+	close();
+}
+
+void memory_reader::do_close(scoped_lock &)
+{
+}
+
+std::pair<aio_result, buffer_lease> memory_reader::get_buffer(aio_waiter & h)
+{
+	if (error_) {
+		return {aio_result::error, buffer_lease()};
+	}
+	else if (eof_) {
+		return {aio_result::ok, buffer_lease()};
+	}
+
+	auto b = buffer_pool_.get_buffer(*this);
+	if (!b) {
+		add_waiter(h);
+		return {aio_result::wait, buffer_lease()};
+	}
+
+	size_t to_read = std::min(b->capacity(), remaining_);
+	b->append(reinterpret_cast<uint8_t const*>(data_.data()) + start_offset_ + size_ - remaining_, to_read);
+	remaining_ -= to_read;
+	if (!remaining_) {
+		eof_ = true;
+	}
+	get_buffer_called_ = true;
+
+	return {aio_result::ok, std::move(b)};
+}
+
+void memory_reader::on_buffer_avilibility()
+{
+	signal_availibility();
+}
+
+bool memory_reader::do_seek(scoped_lock &)
+{
+	return true;
 }
 
 }

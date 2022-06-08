@@ -12,6 +12,7 @@
 #include <shadow.h>
 #endif
 #include <grp.h>
+#include <limits.h>
 #include <pwd.h>
 #include <string.h>
 #include <sys/types.h>
@@ -36,10 +37,10 @@ struct passwd_holder {
 	struct passwd* pwd_{};
 
 	struct passwd pwd_buffer_;
-	fz::buffer buf_{};
+	buffer buf_{};
 };
 
-passwd_holder get_passwd(fz::native_string const& username)
+passwd_holder get_passwd(native_string const& username)
 {
 	passwd_holder ret;
 
@@ -57,9 +58,27 @@ passwd_holder get_passwd(fz::native_string const& username)
 	return ret;
 }
 
-std::optional<gid_t> get_group(fz::native_string const& gname)
+passwd_holder get_passwd(uid_t const id)
 {
-	fz::buffer buf;
+	passwd_holder ret;
+
+	size_t s = 1024;
+	int res{};
+	do {
+		s *= 2;
+		res = getpwuid_r(id, &ret.pwd_buffer_, reinterpret_cast<char*>(ret.buf_.get(s)), s, &ret.pwd_);
+	} while (res == ERANGE);
+
+	if (res || !ret.pwd_) {
+		ret.pwd_ = nullptr;
+	}
+
+	return ret;
+}
+
+std::optional<gid_t> get_group(native_string const& gname)
+{
+	buffer buf;
 
 	struct group g;
 	struct group *pg{};
@@ -93,10 +112,10 @@ struct shadow_holder {
 	struct spwd* shadow_{};
 
 	struct spwd shadow_buffer_;
-	fz::buffer buf_{};
+	buffer buf_{};
 };
 
-shadow_holder get_shadow(fz::native_string const& username)
+shadow_holder get_shadow(native_string const& username)
 {
 	shadow_holder ret;
 
@@ -124,8 +143,8 @@ public:
 		return t.impl_.get();
 	}
 
-	fz::native_string name_;
-	fz::native_string home_;
+	native_string name_;
+	native_string home_;
 	uid_t uid_{};
 	gid_t gid_{};
 	std::vector<gid_t> sup_groups_;
@@ -169,7 +188,7 @@ std::vector<gid_t> get_supplementary(std::string const& username, gid_t primary)
 	return ret;
 }
 
-bool check_auth(fz::native_string const& username, fz::native_string const& password)
+bool check_auth(native_string const& username, native_string const& password)
 {
 #if FZ_UNIX
 	auto shadow = get_shadow(username);
@@ -214,7 +233,7 @@ bool check_auth(fz::native_string const& username, fz::native_string const& pass
 }
 }
 
-impersonation_token::impersonation_token(fz::native_string const& username, fz::native_string const& password)
+impersonation_token::impersonation_token(native_string const& username, native_string const& password)
 {
 	auto pwd = get_passwd(username);
 	if (pwd.pwd_) {
@@ -231,7 +250,7 @@ impersonation_token::impersonation_token(fz::native_string const& username, fz::
 	}
 }
 
-impersonation_token::impersonation_token(fz::native_string const& username, impersonation_flag flag, fz::native_string const& group)
+impersonation_token::impersonation_token(native_string const& username, impersonation_flag flag, native_string const& group)
 {
 	if (flag == impersonation_flag::pwless) {
 		auto pwd = get_passwd(username);
@@ -258,14 +277,14 @@ impersonation_token::impersonation_token(fz::native_string const& username, impe
 	}
 }
 
-fz::native_string impersonation_token::username() const
+native_string impersonation_token::username() const
 {
-	return impl_ ? impl_->name_ : fz::native_string();
+	return impl_ ? impl_->name_ : native_string();
 }
 
 std::size_t impersonation_token::hash() const noexcept
 {
-	return impl_ ? std::hash<fz::native_string>{}(impl_->name_) : std::hash<fz::native_string>{}(fz::native_string());
+	return impl_ ? std::hash<native_string>{}(impl_->name_) : std::hash<native_string>{}(native_string());
 }
 
 // Note: Setuid binaries
@@ -276,7 +295,7 @@ bool set_process_impersonation(impersonation_token const& token)
 		return false;
 	}
 
-	if (setgroups(impl->sup_groups_.size(), impl->sup_groups_.data()) != 0) {
+	if (setgroups(std::min(impl->sup_groups_.size(), size_t(NGROUPS_MAX)), impl->sup_groups_.data()) != 0) {
 		return false;
 	}
 
@@ -314,13 +333,21 @@ bool impersonation_token::operator<(impersonation_token const& op) const
 	return std::tie(impl_->name_, impl_->uid_, impl_->gid_, impl_->home_, impl_->sup_groups_) < std::tie(op.impl_->name_, op.impl_->uid_, op.impl_->gid_, op.impl_->home_, impl_->sup_groups_);
 }
 
-fz::native_string impersonation_token::home() const
+native_string impersonation_token::home() const
 {
-	return impl_ ? impl_->home_ : fz::native_string();
+	return impl_ ? impl_->home_ : native_string();
+}
+
+native_string current_username()
+{
+	passwd_holder pwd = get_passwd(geteuid());
+	if (!pwd.pwd_ || !pwd.pwd_->pw_name) {
+		return {};
+	}
+	return pwd.pwd_->pw_name;
 }
 
 }
-
 
 #elif FZ_WINDOWS
 
@@ -356,7 +383,7 @@ public:
 	impersonation_token_impl(impersonation_token_impl const&) = delete;
 	impersonation_token_impl& operator=(impersonation_token_impl const&) = delete;
 
-	fz::native_string name_;
+	native_string name_;
 	std::string sid_; // SID as string
 	HANDLE h_{INVALID_HANDLE_VALUE};
 };
@@ -368,9 +395,9 @@ impersonation_token::impersonation_token(impersonation_token&&) noexcept = defau
 impersonation_token& impersonation_token::operator=(impersonation_token&&) noexcept = default;
 
 
-impersonation_token::impersonation_token(fz::native_string const& username, fz::native_string const& password)
+impersonation_token::impersonation_token(native_string const& username, native_string const& password)
 {
-	if (username.find_first_of(L"\"/\\[]:;|=,+*?<>") != fz::native_string::npos) {
+	if (username.find_first_of(L"\"/\\[]:;|=,+*?<>") != native_string::npos) {
 		return;
 	}
 
@@ -397,14 +424,14 @@ impersonation_token::impersonation_token(fz::native_string const& username, fz::
 	CloseHandle(token);
 }
 
-fz::native_string impersonation_token::username() const
+native_string impersonation_token::username() const
 {
-	return impl_ ? impl_->name_ : fz::native_string();
+	return impl_ ? impl_->name_ : native_string();
 }
 
 std::size_t impersonation_token::hash() const noexcept
 {
-	return impl_ ? std::hash<fz::native_string>{}(impl_->name_) : std::hash<fz::native_string>{}(fz::native_string());
+	return impl_ ? std::hash<native_string>{}(impl_->name_) : std::hash<native_string>{}(native_string());
 }
 
 bool impersonation_token::operator==(impersonation_token const& op) const
@@ -439,9 +466,9 @@ typedef void (*cotaskmemfree_t)(void*);
 }
 }
 
-fz::native_string impersonation_token::home() const
+native_string impersonation_token::home() const
 {
-	fz::native_string ret;
+	native_string ret;
 
 	if (impl_) {
 		wchar_t* out{};
@@ -464,6 +491,30 @@ HANDLE get_handle(impersonation_token const& t) {
 	return impersonation_token_impl::get_handle(t);
 }
 
+native_string current_username()
+{
+	std::wstring username;
+
+	username.resize(128);
+	DWORD size = static_cast<DWORD>(username.size());
+
+	while (!GetUserNameW(username.data(), &size)) {
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+			return {};
+		}
+
+		username.resize(username.size() * 2);
+		size = static_cast<DWORD>(username.size());
+	}
+
+	if (!size) {
+		return {};
+	}
+
+	username.resize(size -1);
+	return username;
+}
+
 }
 
 #elif 0
@@ -474,18 +525,18 @@ impersonation_token::impersonation_token() {}
 impersonation_token::impersonation_token(impersonation_token&&) noexcept {}
 impersonation_token& impersonation_token::operator=(impersonation_token&&) noexcept { return *this; }
 
-impersonation_token::impersonation_token(fz::native_string const&, fz::native_string const&) {}
+impersonation_token::impersonation_token(native_string const&, native_string const&) {}
 impersonation_token::~impersonation_token() noexcept {}
 
 bool impersonation_token::operator==(impersonation_token const&) const { return true; }
 bool impersonation_token::operator<(impersonation_token const&) const { return false; }
 
-fz::native_string impersonation_token::username() const { return {}; }
-fz::native_string impersonation_token::home() const { return {}; }
+native_string impersonation_token::username() const { return {}; }
+native_string impersonation_token::home() const { return {}; }
 std::size_t impersonation_token::hash() const noexcept { return {}; }
 
 #if FZ_UNIX
-impersonation_token::impersonation_token(fz::native_string const&, impersonation_flag) {}
+impersonation_token::impersonation_token(native_string const&, impersonation_flag) {}
 bool set_process_impersonation(impersonation_token const&)
 {
 	return false;

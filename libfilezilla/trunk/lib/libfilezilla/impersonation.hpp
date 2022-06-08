@@ -73,6 +73,9 @@ private:
 bool FZ_PUBLIC_SYMBOL set_process_impersonation(impersonation_token const& token);
 #endif
 
+/// Returns the username the calling thread is running under
+native_string FZ_PUBLIC_SYMBOL current_username();
+
 }
 
 namespace std {

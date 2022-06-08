@@ -12,7 +12,7 @@ class aio_buffer_pool;
 class FZ_PUBLIC_SYMBOL buffer_lease final
 {
 public:
-	buffer_lease() noexcept = default;
+	constexpr buffer_lease() noexcept = default;
 	~buffer_lease() noexcept
 	{
 		release();
@@ -79,11 +79,13 @@ private:
 	aio_waiter* active_signalling_{};
 };
 
+class logger_interface;
+
 class FZ_PUBLIC_SYMBOL aio_buffer_pool final : public aio_waitable
 {
 public:
 	// If buffer_size is 0, it picks a suitable default
-	aio_buffer_pool(size_t buffer_count = 1, size_t buffer_size = 0);
+	aio_buffer_pool(logger_interface & logger, size_t buffer_count = 1, size_t buffer_size = 0);
 	~aio_buffer_pool();
 
 	operator bool() const {
@@ -94,9 +96,13 @@ public:
 	// If you depend on wakeup order, you are not using this class correctly.
 	buffer_lease get_buffer(aio_waiter & h);
 
+	logger_interface & logger() const { return logger_; }
+
 private:
 	friend class buffer_lease;
 	void release(nonowning_buffer && b);
+
+	logger_interface & logger_;
 
 	mutex mtx_;
 

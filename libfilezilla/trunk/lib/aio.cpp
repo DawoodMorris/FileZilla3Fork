@@ -45,6 +45,7 @@ void buffer_lease::release()
 {
 	if (pool_) {
 		pool_->release(std::move(buffer_));
+		pool_ = nullptr;
 	}
 }
 
@@ -91,7 +92,8 @@ void aio_waitable::signal_availibility()
 }
 
 
-aio_buffer_pool::aio_buffer_pool(size_t buffer_count, size_t buffer_size)
+aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count, size_t buffer_size)
+	: logger_(logger)
 {
 	if (!buffer_size) {
 		buffer_size = 256*1024;

@@ -5,6 +5,8 @@
 #include "file.hpp"
 #include "thread_pool.hpp"
 
+#include <list>
+
 namespace fz {
 
 class FZ_PUBLIC_SYMBOL reader_base : protected aio_waiter, public aio_waitable
@@ -18,10 +20,11 @@ public:
 	void close();
 
 	virtual bool seekable() const { return false; }
-	bool rewind() { return seek(0, nosize); }
 
 	/// If seek fails, the reader is in an undefined state and must be closed
 	bool seek(uint64_t offset, uint64_t size = nosize);
+
+	bool rewind();
 
 	std::wstring const& name() const { return name_; }
 
@@ -30,17 +33,19 @@ public:
 
 	virtual datetime mtime() const { return {}; }
 
-	std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h);
+	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) = 0;
 
 protected:
 	reader_base(std::wstring && name, aio_buffer_pool & pool, size_t max_buffers) noexcept
 	    : buffer_pool_(pool)
+	    , logger_(pool.logger())
 	    , name_(name)
 	    , max_buffers_(max_buffers)
 	{}
 
 	reader_base(std::wstring_view name, aio_buffer_pool & pool, size_t max_buffers) noexcept
 	    : buffer_pool_(pool)
+	    , logger_(pool.logger())
 	    , name_(name)
 	    , max_buffers_(max_buffers)
 	{}
@@ -53,19 +58,18 @@ protected:
 
 	virtual void do_close(scoped_lock &) {}
 
-	virtual void wakeup(scoped_lock &) {}
-
 	mutex mtx_;
 	aio_buffer_pool & buffer_pool_;
+	logger_interface & logger_;
 
 	std::wstring const name_;
 
 	size_t const max_buffers_{};
-	std::vector<buffer_lease> buffers_;
+	std::list<buffer_lease> buffers_;
 
 	uint64_t size_{nosize};
 	uint64_t max_size_{nosize};
-	uint64_t start_offset_{0};
+	uint64_t start_offset_{nosize};
 	uint64_t remaining_{nosize};
 
 	bool get_buffer_called_{};
@@ -74,11 +78,26 @@ protected:
 };
 
 class thread_pool;
-class FZ_PUBLIC_SYMBOL file_reader final : public reader_base
+class FZ_PUBLIC_SYMBOL threaded_reader : public reader_base
 {
 public:
-	file_reader(thread_pool & tpool, file && f, std::wstring && name, aio_buffer_pool & pool, size_t max_buffers) noexcept;
-	file_reader(thread_pool & tpool, file && f, std::wstring_view name, aio_buffer_pool & pool, size_t max_buffers) noexcept;
+	using reader_base::reader_base;
+	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) override;
+	virtual void wakeup(scoped_lock &) {}
+
+protected:
+	condition cond_;
+	async_task task_;
+
+	bool quit_{};
+};
+
+
+class FZ_PUBLIC_SYMBOL file_reader final : public threaded_reader
+{
+public:
+	file_reader(std::wstring && name, aio_buffer_pool & pool, file && f, thread_pool & tpool, uint64_t offset = 0, uint64_t size = nosize, size_t max_buffers = 4) noexcept;
+	file_reader(std::wstring_view name, aio_buffer_pool & pool, file && f, thread_pool & tpool, uint64_t offset = 0, uint64_t size = nosize, size_t max_buffers = 4) noexcept;
 
 	virtual ~file_reader() noexcept;
 
@@ -95,11 +114,27 @@ private:
 
 	file file_;
 	thread_pool & thread_pool_;
+};
 
-	condition cond_;
-	async_task task_;
+/// Does not own the data, uses just one buffer
+class FZ_PUBLIC_SYMBOL memory_reader final : public reader_base
+{
+public:
+	memory_reader(std::wstring && name, aio_buffer_pool & pool, std::string_view data) noexcept;
 
-	bool quit_{};
+	virtual ~memory_reader() noexcept;
+
+	virtual bool seekable() const override { return true; }
+
+	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) override;
+
+private:
+	virtual void do_close(scoped_lock & l) override;
+	virtual bool do_seek(scoped_lock & l) override;
+
+	virtual void on_buffer_avilibility() override;
+
+	std::string_view const data_;
 };
 
 }

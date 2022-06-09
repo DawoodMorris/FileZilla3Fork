@@ -125,7 +125,8 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 	if (use_shm) {
 #if FZ_WINDOWS
 		shm_ = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(memory_size_), nullptr);
-		if (!mapping || mapping == INVALID_HANDLE_VALUE) {
+		if (!shm_ || shm_ == INVALID_HANDLE_VALUE) {
+			shm_ = INVALID_HANDLE_VALUE;
 			DWORD err = GetLastError();
 			logger_.log(logmsg::debug_warning, "CreateFileMapping failed with error %u", err);
 			return;

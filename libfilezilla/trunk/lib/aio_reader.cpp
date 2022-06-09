@@ -293,7 +293,7 @@ memory_reader::memory_reader(std::wstring && name, aio_buffer_pool & pool, std::
 	}
 }
 
-memory_reader::~memory_reader()
+memory_reader::~memory_reader() noexcept
 {
 	close();
 }

@@ -123,6 +123,11 @@ else
   libdeps=-lpthread
   CHECK_ICONV([libdeps="$libdeps -liconv"])
 
+  CHECK_MEMFD_CREATE
+  if test "$have_memfd_create" != "yes"; then
+    CHECK_LRT_FOR_SHM_OPEN
+  fi
+
   CHECK_RANDOM
 fi
 

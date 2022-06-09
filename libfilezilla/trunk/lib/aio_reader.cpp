@@ -170,7 +170,7 @@ file_reader::file_reader(std::wstring_view name, aio_buffer_pool & pool, file &&
 	}
 }
 
-file_reader::~file_reader()
+file_reader::~file_reader() noexcept
 {
 	close();
 }
@@ -317,7 +317,10 @@ std::pair<aio_result, buffer_lease> memory_reader::get_buffer(aio_waiter & h)
 		return {aio_result::wait, buffer_lease()};
 	}
 
-	size_t to_read = std::min(b->capacity(), remaining_);
+	size_t to_read = b->capacity();
+	if (remaining_ != nosize && remaining_ < to_read) {
+		to_read = remaining_;
+	}
 	b->append(reinterpret_cast<uint8_t const*>(data_.data()) + start_offset_ + size_ - remaining_, to_read);
 	remaining_ -= to_read;
 	if (!remaining_) {

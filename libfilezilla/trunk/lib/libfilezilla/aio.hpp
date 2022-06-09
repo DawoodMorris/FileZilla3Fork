@@ -85,8 +85,13 @@ class FZ_PUBLIC_SYMBOL aio_buffer_pool final : public aio_waitable
 {
 public:
 	// If buffer_size is 0, it picks a suitable default
-	aio_buffer_pool(logger_interface & logger, size_t buffer_count = 1, size_t buffer_size = 0);
-	~aio_buffer_pool();
+#if FZ_MAC
+	// On macOS, if using sandboxing, you need to pass an application group identifier.
+	aio_buffer_pool(logger_interface & logger, size_t buffer_count = 1, size_t buffer_size = 0, bool use_shm = false, std::string_view application_group_id = {});
+#else
+	aio_buffer_pool(logger_interface & logger, size_t buffer_count = 1, size_t buffer_size = 0, bool use_shm = false);
+#endif
+	~aio_buffer_pool() noexcept;
 
 	operator bool() const {
 		return memory_ != nullptr;
@@ -98,17 +103,34 @@ public:
 
 	logger_interface & logger() const { return logger_; }
 
+#if FZ_WINDOWS
+	// A HANDLE
+	typedef void* shm_handle;
+	static shm_handle const shm_handle_default;
+#else
+	// A file descriptor
+	typedef int shm_handle;
+	static shm_handle constexpr shm_handle_default{-1};
+#endif
+
+	std::tuple<shm_handle, uint8_t const*, size_t> shared_memory_info() const;
+
 private:
 	friend class buffer_lease;
 	void release(nonowning_buffer && b);
 
 	logger_interface & logger_;
 
-	mutex mtx_;
+	mutable mutex mtx_;
 
+	uint64_t memory_size_{};
 	uint8_t* memory_{};
 
 	std::vector<nonowning_buffer> buffers_;
+
+	shm_handle shm_{shm_handle_default};
+
+	size_t const buffer_count_{};
 };
 
 enum class aio_result

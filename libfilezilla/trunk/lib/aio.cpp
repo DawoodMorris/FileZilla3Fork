@@ -1,10 +1,13 @@
 #include "libfilezilla/aio.hpp"
+#include "libfilezilla/logger.hpp"
 #include "libfilezilla/util.hpp"
 
 #ifdef FZ_WINDOWS
 #include "libfilezilla/glue/windows.hpp"
 #else
+#include "libfilezilla/encode.hpp"
 #include <sys/mman.h>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -92,8 +95,17 @@ void aio_waitable::signal_availibility()
 }
 
 
-aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count, size_t buffer_size)
-	: logger_(logger)
+#if FZ_WINDOWS
+aio_buffer_pool::shm_handle const aio_buffer_pool::shm_handle_default{INVALID_HANDLE_VALUE};
+#endif
+
+#if FZ_MAC
+aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count, size_t buffer_size, bool use_shm, std::string_view application_group_id)
+#else
+aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count, size_t buffer_size, bool use_shm)
+#endif
+	: logger_{logger}
+	, buffer_count_{buffer_count}
 {
 	if (!buffer_size) {
 		buffer_size = 256*1024;
@@ -108,9 +120,58 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 
 	// Since different threads/processes operate on different buffers at the same time
 	// seperate them with a padding page to prevent false sharing due to automatic prefetching.
-	size_t const memory_size = (adjusted_buffer_size + psz) * buffer_count + psz;
+	memory_size_ = (adjusted_buffer_size + psz) * buffer_count + psz;
 
-	memory_ = new(std::nothrow) uint8_t[memory_size];
+	if (use_shm) {
+#if FZ_WINDOWS
+		shm_ = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(memory_size_), nullptr);
+		if (!mapping || mapping == INVALID_HANDLE_VALUE) {
+			DWORD err = GetLastError();
+			logger_.log(logmsg::debug_warning, "CreateFileMapping failed with error %u", err);
+			return;
+		}
+		memory_ = static_cast<uint8_t*>(MapViewOfFile(reinterpret_cast<HANDLE>(shm_), FILE_MAP_ALL_ACCESS, 0, 0, memory_size_));
+		if (!memory_) {
+			DWORD err = GetLastError();
+			logger_.log(logmsg::debug_warning, "MapViewOfFile failed with error %u", err);
+			return;
+		}
+#else
+#if HAVE_MEMFD_CREATE
+		shm_ = memfd_create("aio_buffer_pool", MFD_CLOEXEC);
+#else
+		std::string name;
+#if FZ_MAC
+		if (!application_group_id.empty()) {
+			name = application_group_id + "/" + base32_encode(random_bytes(10), base32_type::locale_safe, false);
+		}
+		else
+#endif
+		{
+			name = "/" + base32_encode(random_bytes(16), base32_type::locale_safe, false);
+		}
+
+		shm_ = shm_open(name.c_str(), O_CREAT|O_EXCL|O_RDWR, S_IRUSR|S_IWUSR);
+		if (shm_ != -1) {
+			shm_unlink(name.c_str());
+		}
+#endif
+		if (shm_ == -1) {
+			int err = errno;
+			logger_.log(logmsg::debug_warning, L"Could not create shm_fd_, errno=%d", err);
+			return;
+		}
+		memory_ = static_cast<uint8_t*>(mmap(nullptr, memory_size_, PROT_READ|PROT_WRITE, MAP_SHARED, shm_, 0));
+		if (!memory_) {
+			int err = errno;
+			logger_.log(logmsg::debug_warning, "mmap failed with error %d", err);
+			return;
+		}
+#endif
+	}
+	else {
+		memory_ = new(std::nothrow) uint8_t[memory_size_];
+	}
 	if (memory_) {
 		buffers_.reserve(buffer_count);
 		auto *p = memory_ + psz;
@@ -120,9 +181,28 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 	}
 }
 
-aio_buffer_pool::~aio_buffer_pool()
+aio_buffer_pool::~aio_buffer_pool() noexcept
 {
-	delete [] memory_;
+	scoped_lock l(mtx_);
+	if (buffers_.size() != buffer_count_) {
+		abort();
+	}
+	if (shm_ != shm_handle_default) {
+#if FZ_WINDOWS
+		if (memory_) {
+			UnmapViewOfFile(memory_);
+		}
+		CloseHandle(reinterpret_cast<HANDLE>(shm_));
+#else
+		if (memory_) {
+			munmap(memory_, memory_size_);
+		}
+		close(shm_);
+#endif
+	}
+	else {
+		delete [] memory_;
+	}
 }
 
 buffer_lease aio_buffer_pool::get_buffer(aio_waiter & h)
@@ -150,6 +230,12 @@ void aio_buffer_pool::release(nonowning_buffer && b)
 	}
 
 	signal_availibility();
+}
+
+std::tuple<aio_buffer_pool::shm_handle, uint8_t const*, size_t> aio_buffer_pool::shared_memory_info() const
+{
+	scoped_lock l(mtx_);
+	return {shm_, memory_, memory_size_};
 }
 
 }

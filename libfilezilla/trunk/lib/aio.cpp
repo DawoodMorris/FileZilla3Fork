@@ -143,7 +143,7 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 		std::string name;
 #if FZ_MAC
 		if (!application_group_id.empty()) {
-			name = application_group_id + "/" + base32_encode(random_bytes(10), base32_type::locale_safe, false);
+			name = std::string(application_group_id) + "/" + base32_encode(random_bytes(10), base32_type::locale_safe, false);
 		}
 		else
 #endif

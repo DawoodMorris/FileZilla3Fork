@@ -77,6 +77,7 @@ public:
 	 /// Starts the loop in the caller's thread.
 	void run();
 
+	bool running() const;
 private:
 	friend class event_handler;
 
@@ -108,7 +109,7 @@ private:
 	Events pending_events_;
 	Timers timers_;
 
-	mutex sync_;
+	mutable mutex sync_;
 	condition cond_;
 
 	event_handler * active_handler_{};
@@ -123,6 +124,7 @@ private:
 	std::unique_ptr<async_task> task_;
 
 	bool quit_{};
+	bool threadless_{};
 };
 
 }

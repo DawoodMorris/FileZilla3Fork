@@ -83,8 +83,9 @@ private:
 
 	void FZ_PRIVATE_SYMBOL remove_handler(event_handler* handler);
 
-	timer_id FZ_PRIVATE_SYMBOL add_timer(event_handler* handler, duration const& interval, bool one_shot);
+	timer_id FZ_PRIVATE_SYMBOL add_timer(event_handler* handler, monotonic_clock const& deadline, duration const& interval);
 	void FZ_PRIVATE_SYMBOL stop_timer(timer_id id);
+	timer_id FZ_PRIVATE_SYMBOL stop_add_timer(timer_id id, event_handler* handler, monotonic_clock const& deadline, duration const& interval);
 
 	void send_event(event_handler* handler, event_base* evt);
 
@@ -103,6 +104,8 @@ private:
 		monotonic_clock deadline_;
 		duration interval_{};
 	};
+
+	timer_id FZ_PRIVATE_SYMBOL setup_timer(scoped_lock &lock, timer_data &d, event_handler* handler, monotonic_clock const& deadline, duration const& interval);
 
 	typedef std::vector<timer_data> Timers;
 

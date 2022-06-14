@@ -37,6 +37,12 @@ event_loop::~event_loop()
 	stop(true);
 }
 
+bool event_loop::running() const
+{
+	scoped_lock lock(sync_);
+	return task_ || thread_ || threadless_;
+}
+
 void event_loop::send_event(event_handler* handler, event_base* evt)
 {
 	event_assert(handler);
@@ -186,11 +192,20 @@ bool event_loop::process_event(scoped_lock & l)
 
 void event_loop::run()
 {
-	if (task_ || thread_ || thread_id_ != thread::id()) {
-		return;
+	{
+		scoped_lock l(sync_);
+		if (threadless_ || task_ || thread_ || thread_id_ != thread::id()) {
+			return;
+		}
+		threadless_ = true;
 	}
 
 	entry();
+
+	{
+		scoped_lock l(sync_);
+		threadless_ = false;
+	}
 }
 
 void event_loop::entry()

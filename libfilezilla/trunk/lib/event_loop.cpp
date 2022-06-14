@@ -121,27 +121,23 @@ void event_loop::filter_events(std::function<bool(Events::value_type &)> const& 
 	);
 }
 
-timer_id event_loop::add_timer(event_handler* handler, duration const& interval, bool one_shot)
+timer_id event_loop::add_timer(event_handler* handler, monotonic_clock const &deadline, duration const& interval)
 {
-	timer_data d;
-	d.handler_ = handler;
-	if (!one_shot) {
-		d.interval_ = interval;
-	}
-	d.deadline_ = monotonic_clock::now() + interval;
+	timer_id id = 0;
+	
+	if (deadline) {
+		timer_data d;
 
-	scoped_lock lock(sync_);
-	if (!handler->removing_) {
-		d.id_ = ++next_timer_id_; // 64bit, can this really ever overflow?
+		scoped_lock lock(sync_);
+		
+		id = setup_timer(lock, d, handler, deadline, interval);
 
-		timers_.emplace_back(d);
-		if (!deadline_ || d.deadline_ < deadline_) {
-			// Our new time is the next timer to trigger
-			deadline_ = d.deadline_;
-			cond_.signal(lock);
+		if (id) {
+			timers_.push_back(std::move(d));
 		}
 	}
-	return d.id_;
+	
+	return id;
 }
 
 void event_loop::stop_timer(timer_id id)
@@ -162,6 +158,49 @@ void event_loop::stop_timer(timer_id id)
 			}
 		}
 	}
+}
+
+timer_id event_loop::stop_add_timer(timer_id id, event_handler* handler, monotonic_clock const &deadline, duration const& interval)
+{
+	scoped_lock lock(sync_);
+	
+	if (id) {
+		for (auto it = timers_.begin(); it != timers_.end(); ++it) {
+			if (it->id_ == id) {
+				return setup_timer(lock, *it, handler, deadline, interval);
+			}
+		}
+	}
+
+	timer_data d;
+
+	id = setup_timer(lock, d, handler, deadline, interval);
+
+	if (id) {
+		timers_.push_back(std::move(d));
+	}
+
+	return id;
+}
+
+timer_id event_loop::setup_timer(scoped_lock &lock, timer_data &d, event_handler* handler,  monotonic_clock const& deadline, duration const& interval)
+{
+	if (handler->removing_) {
+		return 0;
+	}
+
+	d.interval_ = interval;
+	d.deadline_ = deadline;
+	d.handler_ = handler;
+	d.id_ = ++next_timer_id_; // 64bit, can this really ever overflow?
+
+	if (!deadline_ || d.deadline_ < deadline_) {
+		// Our new time is the next timer to trigger
+		deadline_ = d.deadline_;
+		cond_.signal(lock);
+	}
+
+	return d.id_;
 }
 
 bool event_loop::process_event(scoped_lock & l)

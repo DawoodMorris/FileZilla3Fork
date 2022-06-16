@@ -215,11 +215,6 @@ bool file_reader::do_seek(scoped_lock & l)
 	}
 }
 
-void file_reader::wakeup(scoped_lock & l)
-{
-	cond_.signal(l);
-}
-
 void file_reader::on_buffer_avilibility()
 {
 	scoped_lock l(mtx_);

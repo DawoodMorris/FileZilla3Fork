@@ -11,6 +11,21 @@ namespace fz {
 class FZ_PUBLIC_SYMBOL writer_base : public aio_waitable
 {
 public:
+	static constexpr auto nosize = static_cast<uint64_t>(-1);
+
+	writer_base(writer_base const&) = delete;
+	writer_base& operator=(writer_base const&) = delete;
+
+	virtual aio_result preallocate(uint64_t /*size*/) { return aio_result::ok; }
+
+	virtual bool offsettable() const { return false; }
+
+	virtual aio_result add_buffer(buffer_lease && b, aio_waiter & h) = 0;
+	virtual aio_result finalize(aio_waiter & h) = 0;
+
+	void close();
+
+protected:
 	writer_base(std::wstring && name, aio_buffer_pool & pool, size_t max_buffers) noexcept
 	    : buffer_pool_(pool)
 	    , name_(name)
@@ -23,16 +38,7 @@ public:
 	    , max_buffers_(max_buffers)
 	{}
 
-	writer_base(writer_base const&) = delete;
-	writer_base& operator=(writer_base const&) = delete;
-
-	aio_result add_buffer(buffer_lease && b, aio_waiter & h);
-	aio_result finalize(aio_waiter & h);
-
-	virtual aio_result preallocate(uint64_t /*size*/) { return aio_result::ok; }
-
-protected:
-	virtual void wakeup(scoped_lock &) {}
+	virtual void do_close(fz::scoped_lock &) {}
 
 	mutex mtx_;
 	aio_buffer_pool & buffer_pool_;
@@ -43,29 +49,60 @@ protected:
 	std::list<buffer_lease> buffers_;
 
 	bool error_{};
-	bool finalize_{};
+	uint8_t finalizing_{};
 };
 
-
-class FZ_PUBLIC_SYMBOL file_writer final : public writer_base
+class thread_pool;
+class FZ_PUBLIC_SYMBOL threaded_writer : public writer_base
 {
 public:
-	file_writer(thread_pool & tpool, file && f, std::wstring && name, aio_buffer_pool & pool, size_t max_buffers) noexcept;
-	file_writer(thread_pool & tpool, file && f, std::wstring_view name, aio_buffer_pool & pool, size_t max_buffers) noexcept;
+	using writer_base::writer_base;
 
-	virtual ~file_writer() override;
+	void wakeup(scoped_lock & l) {
+		cond_.signal(l);
+	}
 
-private:
+	virtual aio_result add_buffer(buffer_lease && b, aio_waiter & h) override;
+	virtual aio_result finalize(aio_waiter & h) override;
 
-	virtual void wakeup(scoped_lock & l) override;
+protected:
+	virtual void do_close(fz::scoped_lock & l) override;
 
-	void entry();
+	virtual aio_result continue_finalize(aio_waiter &, fz::scoped_lock &) {
+		return aio_result::ok;
+	}
 
 	condition cond_;
 	async_task task_;
-	file file_;
 
 	bool quit_{};
+};
+
+class FZ_PUBLIC_SYMBOL file_writer final : public threaded_writer
+{
+public:
+	file_writer(std::wstring && name, aio_buffer_pool & pool, file && f, thread_pool & tpool, size_t offset = 0, size_t max_buffers = 4) noexcept;
+	file_writer(std::wstring_view name, aio_buffer_pool & pool, file && f, thread_pool & tpool, size_t offset = 0, size_t max_buffers = 4) noexcept;
+
+	virtual ~file_writer() override;
+
+	virtual bool offsettable() const override { return true; }
+
+	virtual aio_result preallocate(uint64_t size) override;
+
+protected:
+	virtual void do_close(fz::scoped_lock & l) override;
+	virtual aio_result continue_finalize(aio_waiter & h, fz::scoped_lock & l) override;
+
+private:
+
+	void entry();
+
+	file file_;
+
+	bool fsync_{};
+	bool preallocated_{};
+	bool from_beginning_{};
 };
 }
 

@@ -12,10 +12,10 @@ namespace fz {
 class FZ_PUBLIC_SYMBOL reader_base : protected aio_waiter, public aio_waitable
 {
 public:
+	static constexpr auto nosize = static_cast<uint64_t>(-1);
+
 	reader_base(reader_base const&) = delete;
 	reader_base& operator=(reader_base const&) = delete;
-
-	static constexpr auto nosize = static_cast<uint64_t>(-1);
 
 	void close();
 
@@ -83,9 +83,12 @@ class FZ_PUBLIC_SYMBOL threaded_reader : public reader_base
 public:
 	using reader_base::reader_base;
 	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) override;
-	virtual void wakeup(scoped_lock &) {}
 
 protected:
+	void wakeup(scoped_lock & l) {
+		cond_.signal(l);
+	}
+
 	condition cond_;
 	async_task task_;
 
@@ -107,7 +110,6 @@ private:
 	virtual void do_close(scoped_lock & l) override;
 	virtual bool do_seek(scoped_lock & l) override;
 
-	virtual void wakeup(scoped_lock & l) override;
 	virtual void on_buffer_avilibility() override;
 
 	void entry();

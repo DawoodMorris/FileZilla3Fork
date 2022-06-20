@@ -16,6 +16,8 @@
 
 namespace fz {
 
+class datetime;
+
 /** \brief Lean class for file access
  *
  * This class uses the system's native file access functions. It is a less convoluted and much faster alternative
@@ -178,6 +180,12 @@ public:
 	 * \return false Data could not be flushed to disk.
 	 */
 	bool fsync();
+
+	/** \brief Sets modification time to specified time.
+	 *
+	 * File must be opened for writing, of the call will fail.
+	 */
+	bool set_modification_time(datetime const& t);
 
 private:
 #ifdef FZ_WINDOWS

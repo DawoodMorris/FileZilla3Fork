@@ -1,5 +1,6 @@
 #include "libfilezilla/libfilezilla.hpp"
 #include "libfilezilla/file.hpp"
+#include "libfilezilla/time.hpp"
 
 #ifdef FZ_WINDOWS
 #include "windows/security_descriptor_builder.hpp"
@@ -363,6 +364,28 @@ bool file::fsync()
 	return fdatasync(fd_) == 0;
 #else
 	return ::fsync(fd_) == 0;
+#endif
+}
+
+bool file::set_modification_time(datetime const& t)
+{
+	if (t.empty()) {
+		return false;
+	}
+
+#ifdef FZ_WINDOWS
+	FILETIME ft = t.get_filetime();
+	if (!ft.dwHighDateTime) {
+		return false;
+	}
+
+	return SetFileTime(fd_, nullptr, &ft, &ft) == TRUE;
+#else
+	struct timespec times[2]{};
+	times[0].tv_nsec = UTIME_OMIT;
+	times[1].tv_sec = t.get_time_t();
+	times[1].tv_nsec = t.get_milliseconds() * 1000000;
+	return futimens(fd_, times) == 0;
 #endif
 }
 

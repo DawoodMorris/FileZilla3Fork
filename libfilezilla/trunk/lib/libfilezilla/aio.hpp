@@ -115,6 +115,8 @@ public:
 
 	std::tuple<shm_handle, uint8_t const*, size_t> shared_memory_info() const;
 
+	size_t buffer_count() const { return buffer_count_; }
+
 private:
 	friend class buffer_lease;
 	void release(nonowning_buffer && b);

@@ -204,6 +204,10 @@ bool FZ_PUBLIC_SYMBOL remove_file(native_string const& name);
 inline file::creation_flags operator|(file::creation_flags lhs, file::creation_flags rhs) {
 	return static_cast<file::creation_flags>(static_cast<unsigned int>(lhs) | rhs);
 }
+inline file::creation_flags& operator|=(file::creation_flags & lhs, file::creation_flags rhs) {
+	lhs = static_cast<file::creation_flags>(static_cast<unsigned int>(lhs) | rhs);
+	return lhs;
+}
 
 }
 #endif

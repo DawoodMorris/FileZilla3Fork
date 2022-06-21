@@ -99,6 +99,56 @@ bool reader_base::seek(uint64_t offset, uint64_t size)
 }
 
 
+reader_factory_holder::reader_factory_holder(reader_factory_holder const& op)
+{
+	if (op.impl_) {
+		impl_ = op.impl_->clone();
+	}
+}
+
+reader_factory_holder& reader_factory_holder::operator=(reader_factory_holder const& op)
+{
+	if (this != &op && op.impl_) {
+		impl_ = op.impl_->clone();
+	}
+	return *this;
+}
+
+reader_factory_holder::reader_factory_holder(reader_factory_holder && op) noexcept
+{
+	impl_ = std::move(op.impl_);
+	op.impl_.reset();
+}
+
+reader_factory_holder& reader_factory_holder::operator=(reader_factory_holder && op) noexcept
+{
+	if (this != &op) {
+		impl_ = std::move(op.impl_);
+		op.impl_.reset();
+	}
+
+	return *this;
+}
+
+reader_factory_holder::reader_factory_holder(std::unique_ptr<reader_factory> && factory)
+	: impl_(std::move(factory))
+{
+}
+
+reader_factory_holder::reader_factory_holder(std::unique_ptr<reader_factory> const& factory)
+	: impl_(factory ? factory->clone() : nullptr)
+{
+}
+
+reader_factory_holder& reader_factory_holder::operator=(std::unique_ptr<reader_factory> && factory)
+{
+	if (impl_ != factory) {
+		impl_ = std::move(factory);
+	}
+
+	return *this;
+}
+
 
 std::pair<aio_result, buffer_lease> threaded_reader::get_buffer(aio_waiter & h)
 {

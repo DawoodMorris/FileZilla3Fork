@@ -77,6 +77,72 @@ protected:
 	bool eof_{};
 };
 
+
+class FZ_PUBLIC_SYMBOL reader_factory
+{
+public:
+	explicit reader_factory(std::wstring const& name)
+	    : name_(name)
+	{}
+
+	virtual ~reader_factory() noexcept = default;
+
+	virtual std::unique_ptr<reader_factory> clone() const = 0;
+
+	virtual std::unique_ptr<reader_base> open(aio_buffer_pool & pool, uint64_t offset = 0, uint64_t size = reader_base::nosize, size_t max_buffers = 0) = 0;
+
+	std::wstring name() const { return name_; }
+
+	virtual uint64_t size() const { return reader_base::nosize; }
+	virtual datetime mtime() const { return datetime(); }
+
+	/// The reader requires at least this many buffers
+	virtual size_t min_buffer_usage() const { return 1; }
+
+	/// Whether the reader can benefit from multiple buffers
+	virtual bool multiple_buffer_usage() const { return false; }
+
+protected:
+	reader_factory() = default;
+	reader_factory(reader_factory const&) = default;
+	reader_factory& operator=(reader_factory const&) = default;
+
+private:
+	std::wstring name_;
+};
+
+class FZ_PUBLIC_SYMBOL reader_factory_holder final
+{
+public:
+	static constexpr auto npos = static_cast<uint64_t>(-1);
+
+	reader_factory_holder() = default;
+	reader_factory_holder(std::unique_ptr<reader_factory> && factory);
+	reader_factory_holder(std::unique_ptr<reader_factory> const& factory);
+	reader_factory_holder(reader_factory const& factory);
+
+	reader_factory_holder(reader_factory_holder const& op);
+	reader_factory_holder& operator=(reader_factory_holder const& op);
+
+	reader_factory_holder(reader_factory_holder && op) noexcept;
+	reader_factory_holder& operator=(reader_factory_holder && op) noexcept;
+	reader_factory_holder& operator=(std::unique_ptr<reader_factory> && factory);
+
+	std::unique_ptr<reader_base> open(aio_buffer_pool & pool, uint64_t offset = 0, uint64_t size = reader_base::nosize, size_t max_buffers = 0)
+	{
+		return impl_ ? impl_->open(pool, offset, size, max_buffers) : nullptr;
+	}
+
+	std::wstring name() const { return impl_ ? impl_->name() : std::wstring(); }
+	uint64_t size() const { return impl_ ? impl_->size() : reader_base::nosize; }
+	datetime mtime() const { return impl_ ? impl_->mtime() : datetime(); }
+
+	explicit operator bool() const { return impl_.operator bool(); }
+
+private:
+	std::unique_ptr<reader_factory> impl_;
+};
+
 class thread_pool;
 class FZ_PUBLIC_SYMBOL threaded_reader : public reader_base
 {

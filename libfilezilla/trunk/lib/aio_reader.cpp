@@ -265,7 +265,7 @@ bool file_reader::do_seek(scoped_lock & l)
 	}
 }
 
-void file_reader::on_buffer_avilibility()
+void file_reader::on_buffer_availability()
 {
 	scoped_lock l(mtx_);
 	cond_.signal(l);
@@ -328,7 +328,7 @@ void file_reader::entry()
 }
 
 
-memory_reader::memory_reader(std::wstring && name, aio_buffer_pool & pool, std::string_view data) noexcept
+view_reader::view_reader(std::wstring && name, aio_buffer_pool & pool, std::string_view data) noexcept
 	: reader_base(name, pool, 1)
 	, data_(data)
 {
@@ -338,16 +338,16 @@ memory_reader::memory_reader(std::wstring && name, aio_buffer_pool & pool, std::
 	}
 }
 
-memory_reader::~memory_reader() noexcept
+view_reader::~view_reader() noexcept
 {
 	close();
 }
 
-void memory_reader::do_close(scoped_lock &)
+void view_reader::do_close(scoped_lock &)
 {
 }
 
-std::pair<aio_result, buffer_lease> memory_reader::get_buffer(aio_waiter & h)
+std::pair<aio_result, buffer_lease> view_reader::get_buffer(aio_waiter & h)
 {
 	if (error_) {
 		return {aio_result::error, buffer_lease()};
@@ -376,12 +376,12 @@ std::pair<aio_result, buffer_lease> memory_reader::get_buffer(aio_waiter & h)
 	return {aio_result::ok, std::move(b)};
 }
 
-void memory_reader::on_buffer_avilibility()
+void view_reader::on_buffer_availability()
 {
 	signal_availibility();
 }
 
-bool memory_reader::do_seek(scoped_lock &)
+bool view_reader::do_seek(scoped_lock &)
 {
 	return true;
 }

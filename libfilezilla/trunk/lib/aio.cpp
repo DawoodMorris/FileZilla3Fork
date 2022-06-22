@@ -88,7 +88,7 @@ void aio_waitable::signal_availibility()
 		active_signalling_ = waiting_.back();
 		waiting_.pop_back();
 		l.unlock();
-		active_signalling_->on_buffer_avilibility();
+		active_signalling_->on_buffer_availability();
 		l.lock();
 		active_signalling_ = nullptr;
 	}

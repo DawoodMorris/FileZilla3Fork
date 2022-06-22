@@ -54,7 +54,7 @@ public:
 protected:
 	// Will be invoked from unspecified thread. Only use it to signal the target thread.
 	// In particular, never call into aio_buffer_pool from this function
-	virtual void on_buffer_avilibility() = 0;
+	virtual void on_buffer_availability() = 0;
 
 	friend class aio_waitable;
 };

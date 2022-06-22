@@ -107,8 +107,6 @@ private:
 class FZ_PUBLIC_SYMBOL writer_factory_holder final
 {
 public:
-	static constexpr auto npos = static_cast<uint64_t>(-1);
-
 	writer_factory_holder() = default;
 	writer_factory_holder(std::unique_ptr<writer_factory> && factory);
 	writer_factory_holder(std::unique_ptr<writer_factory> const& factory);

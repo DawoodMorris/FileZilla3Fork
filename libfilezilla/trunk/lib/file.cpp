@@ -202,6 +202,20 @@ bool file::fsync()
 	return FlushFileBuffers(fd_) != 0;
 }
 
+bool file::set_modification_time(datetime const& t)
+{
+	if (t.empty()) {
+		return false;
+	}
+
+	FILETIME ft = t.get_filetime();
+	if (!ft.dwHighDateTime) {
+		return false;
+	}
+
+	return SetFileTime(fd_, nullptr, &ft, &ft) == TRUE;
+}
+
 #else
 
 file::file(file && op) noexcept
@@ -373,20 +387,11 @@ bool file::set_modification_time(datetime const& t)
 		return false;
 	}
 
-#ifdef FZ_WINDOWS
-	FILETIME ft = t.get_filetime();
-	if (!ft.dwHighDateTime) {
-		return false;
-	}
-
-	return SetFileTime(fd_, nullptr, &ft, &ft) == TRUE;
-#else
 	struct timespec times[2]{};
 	times[0].tv_nsec = UTIME_OMIT;
 	times[1].tv_sec = t.get_time_t();
 	times[1].tv_nsec = t.get_milliseconds() * 1000000;
 	return futimens(fd_, times) == 0;
-#endif
 }
 
 #endif

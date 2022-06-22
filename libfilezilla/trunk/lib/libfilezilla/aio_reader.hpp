@@ -55,6 +55,8 @@ public:
 	 */
 	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) = 0;
 
+	bool error() const;
+
 protected:
 	/**
 	 * \brief Constructs a reader.
@@ -87,7 +89,7 @@ protected:
 
 	virtual void do_close(scoped_lock &) {}
 
-	mutex mtx_;
+	mutable mutex mtx_;
 	aio_buffer_pool & buffer_pool_;
 	logger_interface & logger_;
 
@@ -112,6 +114,9 @@ class FZ_PUBLIC_SYMBOL reader_factory
 public:
 	explicit reader_factory(std::wstring const& name)
 	    : name_(name)
+	{}
+	explicit reader_factory(std::wstring && name)
+	    : name_(std::move(name))
 	{}
 
 	virtual ~reader_factory() noexcept = default;
@@ -159,8 +164,7 @@ protected:
 	reader_factory(reader_factory const&) = default;
 	reader_factory& operator=(reader_factory const&) = default;
 
-private:
-	std::wstring name_;
+	std::wstring const name_;
 };
 
 /// Holder for reader factories
@@ -237,6 +241,26 @@ private:
 	thread_pool & thread_pool_;
 };
 
+/// Factory for \sa file_reader
+class FZ_PUBLIC_SYMBOL file_reader_factory final : public reader_factory
+{
+public:
+	file_reader_factory(std::wstring const& file, thread_pool & tpool);
+
+	virtual std::unique_ptr<reader_base> open(aio_buffer_pool & pool, uint64_t offset = 0, uint64_t size = reader_base::nosize, size_t max_buffers = 4) override;
+	virtual std::unique_ptr<reader_factory> clone() const override;
+
+	virtual bool seekable() const { return true; }
+
+	virtual uint64_t size() const override;
+	virtual	datetime mtime() const override;
+
+	virtual bool multiple_buffer_usage() const override { return true; }
+
+private:
+	thread_pool & thread_pool_;
+};
+
 /// Does not own the data, uses just one buffer
 class FZ_PUBLIC_SYMBOL view_reader final : public reader_base
 {
@@ -255,7 +279,76 @@ private:
 
 	virtual void on_buffer_availability() override;
 
-	std::string_view const data_;
+	std::string_view const view_;
+};
+
+/// Factory for \sa view_reader
+class FZ_PUBLIC_SYMBOL view_reader_factory final : public reader_factory
+{
+public:
+	view_reader_factory(std::wstring && name, std::string_view const& view)
+	    : reader_factory(std::move(name))
+	    , view_(view)
+	{}
+	view_reader_factory(std::wstring const& name, std::string_view const& view)
+	    : reader_factory(name)
+	    , view_(view)
+	{}
+
+	virtual std::unique_ptr<reader_base> open(aio_buffer_pool & pool, uint64_t offset = 0, uint64_t size = reader_base::nosize, size_t max_buffers = 1) override;
+	virtual std::unique_ptr<reader_factory> clone() const override;
+
+	virtual bool seekable() const { return true; }
+
+	virtual uint64_t size() const { return view_.size(); }
+
+private:
+	std::string_view const view_;
+};
+
+/// String reader, keeps a copy of the string.
+class FZ_PUBLIC_SYMBOL string_reader final : public reader_base
+{
+public:
+	string_reader(std::wstring && name, aio_buffer_pool & pool, std::string const& data) noexcept;
+
+	virtual ~string_reader() noexcept;
+
+	virtual bool seekable() const override { return true; }
+
+	virtual std::pair<aio_result, buffer_lease> get_buffer(aio_waiter & h) override;
+
+private:
+	virtual void do_close(scoped_lock & l) override;
+	virtual bool do_seek(scoped_lock & l) override;
+
+	virtual void on_buffer_availability() override;
+
+	std::string const data_;
+};
+
+/// Factory for \sa string_reader, keeps a copy of the string.
+class FZ_PUBLIC_SYMBOL string_reader_factory final : public reader_factory
+{
+public:
+	string_reader_factory(std::wstring const& name, std::string const& data)
+	    : reader_factory(name)
+	    , data_(data)
+	{}
+	string_reader_factory(std::wstring && name, std::string && data)
+	    : reader_factory(std::move(name))
+	    , data_(std::move(data))
+	{}
+
+	virtual std::unique_ptr<reader_base> open(aio_buffer_pool & pool, uint64_t offset = 0, uint64_t size = reader_base::nosize, size_t max_buffers = 1) override;
+	virtual std::unique_ptr<reader_factory> clone() const override;
+
+	virtual bool seekable() const { return true; }
+
+	virtual uint64_t size() const { return data_.size(); }
+
+private:
+	std::string const data_;
 };
 
 }

@@ -1,4 +1,7 @@
 #include "libfilezilla/aio_reader.hpp"
+#include "libfilezilla/local_filesys.hpp"
+#include "libfilezilla/logger.hpp"
+#include "libfilezilla/translate.hpp"
 
 namespace fz {
 
@@ -98,6 +101,11 @@ bool reader_base::seek(uint64_t offset, uint64_t size)
 	return do_seek(l);
 }
 
+bool reader_base::error() const
+{
+	fz::scoped_lock l(mtx_);
+	return error_;
+}
 
 reader_factory_holder::reader_factory_holder(reader_factory_holder const& op)
 {
@@ -328,11 +336,53 @@ void file_reader::entry()
 }
 
 
+file_reader_factory::file_reader_factory(std::wstring const& file, thread_pool & tpool)
+	: reader_factory(file)
+	, thread_pool_(tpool)
+{
+}
+
+std::unique_ptr<reader_base> file_reader_factory::open(aio_buffer_pool & pool, uint64_t offset, uint64_t size, size_t max_buffers)
+{
+	auto f = fz::file(fz::to_native(name()), fz::file::reading, fz::file::existing);
+	if (!f) {
+		return {};
+	}
+
+	auto reader = std::make_unique<file_reader>(name(), pool, std::move(f), thread_pool_, offset, size, max_buffers);
+	if (reader->error()) {
+		return {};
+	}
+	return reader;
+}
+
+std::unique_ptr<reader_factory> file_reader_factory::clone() const
+{
+	return std::make_unique<file_reader_factory>(*this);
+}
+
+uint64_t file_reader_factory::size() const
+{
+	auto s = fz::local_filesys::get_size(fz::to_native(name()));
+	if (s < 0) {
+		return reader_base::nosize;
+	}
+	else {
+		return static_cast<uint64_t>(s);
+	}
+}
+
+fz::datetime file_reader_factory::mtime() const
+{
+	return fz::local_filesys::get_modification_time(fz::to_native(name()));
+}
+
+
 view_reader::view_reader(std::wstring && name, aio_buffer_pool & pool, std::string_view data) noexcept
 	: reader_base(name, pool, 1)
-	, data_(data)
+	, view_(data)
 {
-	size_ = max_size_ = remaining_ = data_.size();
+	size_ = max_size_ = remaining_ = view_.size();
 	if (!remaining_) {
 		eof_ = true;
 	}
@@ -366,7 +416,7 @@ std::pair<aio_result, buffer_lease> view_reader::get_buffer(aio_waiter & h)
 	if (remaining_ != nosize && remaining_ < to_read) {
 		to_read = remaining_;
 	}
-	b->append(reinterpret_cast<uint8_t const*>(data_.data()) + start_offset_ + size_ - remaining_, to_read);
+	b->append(reinterpret_cast<uint8_t const*>(view_.data()) + start_offset_ + size_ - remaining_, to_read);
 	remaining_ -= to_read;
 	if (!remaining_) {
 		eof_ = true;
@@ -384,6 +434,99 @@ void view_reader::on_buffer_availability()
 bool view_reader::do_seek(scoped_lock &)
 {
 	return true;
+}
+
+std::unique_ptr<reader_base> view_reader_factory::open(aio_buffer_pool & pool, uint64_t offset, uint64_t size, size_t)
+{
+	auto ret = std::make_unique<view_reader>(name(), pool, view_);
+	if (offset || size != reader_base::nosize) {
+		if (!ret->seek(offset, size)) {
+			return {};
+		}
+	}
+
+	return ret;
+}
+
+std::unique_ptr<reader_factory> view_reader_factory::clone() const
+{
+	return std::make_unique<view_reader_factory>(name_, view_);
+}
+
+
+string_reader::string_reader(std::wstring && name, aio_buffer_pool & pool, std::string const& data) noexcept
+	: reader_base(name, pool, 1)
+	, data_(data)
+{
+	size_ = max_size_ = remaining_ = data_.size();
+	if (!remaining_) {
+		eof_ = true;
+	}
+}
+
+string_reader::~string_reader() noexcept
+{
+	close();
+}
+
+void string_reader::do_close(scoped_lock &)
+{
+}
+
+std::pair<aio_result, buffer_lease> string_reader::get_buffer(aio_waiter & h)
+{
+	if (error_) {
+		return {aio_result::error, buffer_lease()};
+	}
+	else if (eof_) {
+		return {aio_result::ok, buffer_lease()};
+	}
+
+	auto b = buffer_pool_.get_buffer(*this);
+	if (!b) {
+		add_waiter(h);
+		return {aio_result::wait, buffer_lease()};
+	}
+
+	size_t to_read = b->capacity();
+	if (remaining_ != nosize && remaining_ < to_read) {
+		to_read = remaining_;
+	}
+	b->append(reinterpret_cast<uint8_t const*>(data_.data()) + start_offset_ + size_ - remaining_, to_read);
+	remaining_ -= to_read;
+	if (!remaining_) {
+		eof_ = true;
+	}
+	get_buffer_called_ = true;
+
+	return {aio_result::ok, std::move(b)};
+}
+
+void string_reader::on_buffer_availability()
+{
+	signal_availibility();
+}
+
+bool string_reader::do_seek(scoped_lock &)
+{
+	return true;
+}
+
+std::unique_ptr<reader_base> string_reader_factory::open(aio_buffer_pool & pool, uint64_t offset, uint64_t size, size_t)
+{
+	auto ret = std::make_unique<string_reader>(name(), pool, data_);
+	if (offset || size != reader_base::nosize) {
+		if (!ret->seek(offset, size)) {
+			return {};
+		}
+	}
+
+	return ret;
+}
+
+std::unique_ptr<reader_factory> string_reader_factory::clone() const
+{
+	return std::make_unique<string_reader_factory>(name_, data_);
 }
 
 }

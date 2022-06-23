@@ -71,14 +71,14 @@ protected:
 	    : buffer_pool_(pool)
 	    , logger_(pool.logger())
 	    , name_(name)
-	    , max_buffers_(max_buffers)
+	    , max_buffers_(max_buffers ? max_buffers : 1)
 	{}
 
 	reader_base(std::wstring_view name, aio_buffer_pool & pool, size_t max_buffers) noexcept
 	    : buffer_pool_(pool)
 	    , logger_(pool.logger())
 	    , name_(name)
-	    , max_buffers_(max_buffers)
+	    , max_buffers_(max_buffers ? max_buffers : 1)
 	{}
 
 	/// When this gets called, buffers_ has already been cleared and the waiters have been removed.
@@ -158,6 +158,8 @@ public:
 	 * \c min_buffer_usage() offers no benefits.
 	 */
 	virtual bool multiple_buffer_usage() const { return false; }
+
+	virtual size_t preferred_buffer_count() const { return 1; }
 
 protected:
 	reader_factory() = default;
@@ -257,6 +259,7 @@ public:
 
 	virtual bool multiple_buffer_usage() const override { return true; }
 
+	virtual size_t preferred_buffer_count() const override { return 4; }
 private:
 	thread_pool & thread_pool_;
 };

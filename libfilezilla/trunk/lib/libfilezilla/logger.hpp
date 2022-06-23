@@ -169,6 +169,14 @@ public:
 
 null_logger FZ_PUBLIC_SYMBOL & get_null_logger();
 
+/// A simple logger that writes to stdout
+class FZ_PUBLIC_SYMBOL stdout_logger final : public logger_interface
+{
+public:
+	virtual void do_log(logmsg::type, std::wstring &&) override;
+};
+
+
 }
 
 #endif

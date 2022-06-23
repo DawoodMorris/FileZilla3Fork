@@ -278,6 +278,10 @@ file_writer_factory::file_writer_factory(std::wstring const& file, thread_pool &
 
 std::unique_ptr<writer_base> file_writer_factory::open(aio_buffer_pool & pool, uint64_t offset, writer_base::progress_cb_t progress_cb, size_t max_buffers)
 {
+	if (!max_buffers) {
+		max_buffers = preferred_buffer_count();
+	}
+
 	fz::file::creation_flags flags = offset ? fz::file::existing : fz::file::empty;
 	if (flags_ & file_writer_flags::permissions_current_user_only) {
 		flags |= fz::file::current_user_only;

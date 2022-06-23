@@ -344,6 +344,10 @@ file_reader_factory::file_reader_factory(std::wstring const& file, thread_pool &
 
 std::unique_ptr<reader_base> file_reader_factory::open(aio_buffer_pool & pool, uint64_t offset, uint64_t size, size_t max_buffers)
 {
+	if (!max_buffers) {
+		max_buffers = preferred_buffer_count();
+	}
+
 	auto f = fz::file(fz::to_native(name()), fz::file::reading, fz::file::existing);
 	if (!f) {
 		return {};

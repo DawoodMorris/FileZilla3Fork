@@ -39,14 +39,14 @@ protected:
 	    : buffer_pool_(pool)
 	    , name_(name)
 	    , progress_cb_(std::move(progress_cb))
-	    , max_buffers_(max_buffers)
+	    , max_buffers_(max_buffers ? max_buffers : 1)
 	{}
 
 	writer_base(std::wstring_view name, aio_buffer_pool & pool, progress_cb_t && progress_cb, size_t max_buffers) noexcept
 	    : buffer_pool_(pool)
 	    , name_(name)
 	    , progress_cb_(std::move(progress_cb))
-	    , max_buffers_(max_buffers)
+	    , max_buffers_(max_buffers ? max_buffers : 1)
 	{}
 
 	virtual void do_close(scoped_lock &) {}
@@ -89,6 +89,8 @@ public:
 	/// Whether the writer can benefit from multiple buffers
 	virtual bool multiple_buffer_usage() const { return false; }
 
+	virtual size_t preferred_buffer_count() const { return 1; }
+
 	/** \brief Sets the mtime of the target.
 	 *
 	 * If there are still writers open for the entity represented by the
@@ -119,15 +121,10 @@ public:
 	writer_factory_holder& operator=(writer_factory_holder && op) noexcept;
 	writer_factory_holder& operator=(std::unique_ptr<writer_factory> && factory);
 
-	std::unique_ptr<writer_base> open(aio_buffer_pool & pool, uint64_t offset = 0, writer_base::progress_cb_t progress_cb = nullptr, size_t max_buffers = 0)
-	{
-		return impl_ ? impl_->open(pool, offset, std::move(progress_cb), max_buffers) : nullptr;
-	}
-
-	std::wstring name() const { return impl_ ? impl_->name() : std::wstring(); }
-	uint64_t size() const { return impl_ ? impl_->size() : writer_base::nosize; }
-	datetime mtime() const { return impl_ ? impl_->mtime() : datetime(); }
-	bool set_mtime(datetime const& t) { return impl_ ? impl_->set_mtime(t) : false; }
+	writer_factory const* operator->() const { return impl_.get(); }
+	writer_factory* operator->() { return impl_.get(); }
+	writer_factory const& operator*() const { return *impl_; }
+	writer_factory & operator*() { return *impl_; }
 
 	explicit operator bool() const { return impl_.operator bool(); }
 
@@ -216,6 +213,8 @@ public:
 	virtual bool set_mtime(datetime const& t) override;
 
 	virtual bool multiple_buffer_usage() const override { return true; }
+
+	virtual size_t preferred_buffer_count() const override { return 4; }
 
 private:
 	thread_pool & thread_pool_;

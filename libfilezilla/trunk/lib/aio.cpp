@@ -139,7 +139,7 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 		}
 #else
 #if HAVE_MEMFD_CREATE
-		shm_ = memfd_create("aio_buffer_pool", MFD_CLOEXEC);
+		shm_ = memfd_create("aio_buffer_pool", MFD_CLOEXEC|MFD_ALLOW_SEALING);
 #else
 		std::string name;
 #if FZ_MAC
@@ -162,6 +162,35 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 			logger_.log(logmsg::debug_warning, L"Could not create shm_fd_, errno=%d", err);
 			return;
 		}
+
+#if FZ_MAC
+		// There's a bug on macOS: ftruncate can only be called _once_ on a shared memory object.
+		// The manpages do not cover this bug, only XNU's bsd/kern/posix_shm.c mentions it.
+		struct stat s;
+		if (fstat(shm_, &s) != 0) {
+			int err = errno;
+			logger_.log(logmsg::debug_warning, "fstat failed with error %d", err);
+			return;
+		}
+
+		if (s.st_size < 0 || static_cast<size_t>(s.st_size) < memory_size_)
+#endif
+		{
+			if (ftruncate(shm_, memory_size_) != 0) {
+				int err = errno;
+				logger_.log(logmsg::debug_warning, "ftruncate failed with error %d", err);
+				return;
+			}
+		}
+
+#if HAVE_MEMFD_CREATE
+		if (fcntl(shm_, F_ADD_SEALS, F_SEAL_SHRINK)) {
+			int err = errno;
+			logger_.log(logmsg::debug_warning, "sealing failed with error %d", err);
+			return;
+		}
+#endif
+
 		memory_ = static_cast<uint8_t*>(mmap(nullptr, memory_size_, PROT_READ|PROT_WRITE, MAP_SHARED, shm_, 0));
 		if (!memory_) {
 			int err = errno;
@@ -185,7 +214,7 @@ aio_buffer_pool::aio_buffer_pool(logger_interface & logger, size_t buffer_count,
 aio_buffer_pool::~aio_buffer_pool() noexcept
 {
 	scoped_lock l(mtx_);
-	if (buffers_.size() != buffer_count_) {
+	if (memory_ && buffers_.size() != buffer_count_) {
 		abort();
 	}
 	if (shm_ != shm_handle_default) {
